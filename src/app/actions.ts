@@ -196,9 +196,41 @@ function extractJsonText(text: string) {
   return text;
 }
 
-function geminiModelCandidates(configuredModel: string) {
+function configuredGeminiModel(configuredModel: string) {
   const configured = configuredModel.trim().replace(/^models\//, "");
   return configured || "gemini-2.5-flash";
+}
+
+async function listGeminiModels(apiKey: string) {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    console.error("listGeminiModels", { status: response.status, detail: detail.slice(0, 500) });
+    return { ok: false as const, models: [], message: geminiErrorMessage(response.status, detail) };
+  }
+  const payload = await response.json();
+  const models = Array.isArray(payload.models) ? payload.models : [];
+  const names = models
+    .filter((item: { supportedGenerationMethods?: string[] }) => item.supportedGenerationMethods?.includes("generateContent"))
+    .map((item: { name?: string }) => item.name?.replace(/^models\//, ""))
+    .filter((name: unknown): name is string => typeof name === "string" && name.length > 0);
+  return { ok: true as const, models: names, message: "" };
+}
+
+function chooseGeminiModel(configuredModel: string, availableModels: string[]) {
+  const configured = configuredGeminiModel(configuredModel);
+  if (availableModels.includes(configured)) return configured;
+  const preferred = [
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-flash-latest",
+  ];
+  return preferred.find((name) => availableModels.includes(name)) || availableModels.find((name) => /flash/i.test(name)) || availableModels[0] || configured;
 }
 
 async function requireActiveProfile() {
@@ -360,6 +392,12 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
 
   try {
     const imageData = Buffer.from(await file.arrayBuffer()).toString("base64");
+    const availableModels = await listGeminiModels(apiKey);
+    if (!availableModels.ok) return fichaErrorState(availableModels.message);
+    if (availableModels.models.length === 0) {
+      return fichaErrorState("Essa chave Gemini nao retornou modelos com generateContent. Confira se ela foi criada no Google AI Studio.");
+    }
+    const selectedModel = chooseGeminiModel(model, availableModels.models);
     const baseBody = {
       contents: [
         {
@@ -394,9 +432,7 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
 
     let response: Response | null = null;
     let responseText = "";
-    let usedModel = "";
-
-    usedModel = geminiModelCandidates(model);
+    const usedModel = selectedModel;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(usedModel)}:generateContent?key=${apiKey}`;
     response = await fetch(url, {
       method: "POST",
