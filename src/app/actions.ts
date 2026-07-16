@@ -122,6 +122,80 @@ function normalizeFichaModel(value: string) {
   return value;
 }
 
+function fichaPrompt() {
+  return [
+    "Extraia os dados desta ficha manuscrita da Alianca Motos para cadastro de lead.",
+    "Existem dois modelos de ficha. O objetivo e entender campos escritos e caixas marcadas.",
+    "Leia CPF, telefone, data de nascimento, cidade/localizacao, CNH, modelo, cor, entrada e forma de pagamento.",
+    "Considere caixa marcada quando houver X, risco, check ou rabisco dentro/proximo da opcao.",
+    "Se financiamento estiver marcado, payment_method deve ser financiamento. Se a vista estiver marcado, a_vista. Se cartao, cartao. Se consorcio, consorcio.",
+    "Se Tem habilitacao estiver marcado em Nao, use nao_possui. Se Sim e categoria vazia, use a. Se categoria A e B, use ab.",
+    "Nunca invente dado. Se estiver ilegivel, deixe vazio.",
+    "CPF e telefone podem vir formatados, mas retorne apenas numeros quando possivel.",
+    "birth_date deve vir em YYYY-MM-DD quando a data estiver legivel.",
+    "Coloque informacoes extras em notes, como situacao da simulacao, data da ficha, consultor e condicoes de entrada.",
+    "Responda somente JSON valido com as chaves: full_name, cpf, phone, city, email, birth_date, license_category, motorcycle_model, desired_color, intended_down_payment, payment_method, other_payment_method, notes.",
+  ].join("\n");
+}
+
+function fichaResponseSchema() {
+  return {
+    type: "object",
+    properties: {
+      full_name: { type: "string" },
+      cpf: { type: "string" },
+      phone: { type: "string" },
+      city: { type: "string" },
+      email: { type: "string" },
+      birth_date: { type: "string" },
+      license_category: { type: "string", enum: ["a", "ab", "nao_possui"] },
+      motorcycle_model: { type: "string" },
+      desired_color: { type: "string" },
+      intended_down_payment: { type: "string" },
+      payment_method: { type: "string", enum: ["financiamento", "cartao", "a_vista", "consorcio", "outro"] },
+      other_payment_method: { type: "string" },
+      notes: { type: "string" },
+    },
+    required: [
+      "full_name",
+      "cpf",
+      "phone",
+      "city",
+      "email",
+      "birth_date",
+      "license_category",
+      "motorcycle_model",
+      "desired_color",
+      "intended_down_payment",
+      "payment_method",
+      "other_payment_method",
+      "notes",
+    ],
+  };
+}
+
+function geminiErrorMessage(status: number, detail: string) {
+  const normalized = detail.toLowerCase();
+  if (status === 400 && normalized.includes("api key")) return "A chave Gemini parece invalida. Confira GEMINI_API_KEY na Vercel.";
+  if (status === 400 && normalized.includes("schema")) return "O Gemini rejeitou o formato estruturado. Tente novamente.";
+  if (status === 400) return "O Gemini recusou a imagem ou o modelo configurado. Confira GEMINI_MODEL na Vercel.";
+  if (status === 401 || status === 403) return "A chave Gemini nao tem permissao para essa chamada. Confira a chave e restricoes no Google AI Studio.";
+  if (status === 404) return "Modelo Gemini nao encontrado. Use gemini-2.5-flash ou gemini-2.5-flash-lite.";
+  if (status === 413) return "A foto ficou grande demais para a IA. Tente uma imagem mais leve.";
+  if (status === 429) return "Limite gratuito do Gemini atingido agora. Aguarde um pouco e tente novamente.";
+  if (status >= 500) return "O Gemini ficou indisponivel no momento. Tente novamente em instantes.";
+  return "Nao foi possivel ler a ficha agora. Tente novamente.";
+}
+
+function extractJsonText(text: string) {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced) return fenced[1].trim();
+  const first = text.indexOf("{");
+  const last = text.lastIndexOf("}");
+  if (first >= 0 && last > first) return text.slice(first, last + 1);
+  return text;
+}
+
 async function requireActiveProfile() {
   const context = await getCurrentSessionProfile();
   if (!context.user || !context.profile?.active) {
@@ -281,83 +355,67 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
 
   try {
     const imageData = Buffer.from(await file.arrayBuffer()).toString("base64");
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
+    const normalizedModel = model.replace(/^models\//, "");
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(normalizedModel)}:generateContent?key=${apiKey}`;
+    const baseBody = {
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: fichaPrompt() },
             {
-              role: "user",
-              parts: [
-                {
-                  text: [
-                    "Extraia os dados desta ficha manuscrita da Alianca Motos para cadastro de lead.",
-                    "Existem dois modelos de ficha. O objetivo e entender campos escritos e caixas marcadas.",
-                    "Leia CPF, telefone, data de nascimento, cidade/localizacao, CNH, modelo, cor, entrada e forma de pagamento.",
-                    "Considere caixa marcada quando houver X, risco, check ou rabisco dentro/proximo da opcao.",
-                    "Se financiamento estiver marcado, payment_method deve ser financiamento. Se a vista estiver marcado, a_vista. Se cartao, cartao. Se consorcio, consorcio.",
-                    "Se Tem habilitacao estiver marcado em Nao, use nao_possui. Se Sim e categoria vazia, use a. Se categoria A e B, use ab.",
-                    "Nunca invente dado. Se estiver ilegivel, deixe vazio.",
-                    "CPF e telefone podem vir formatados, mas retorne apenas numeros quando possivel.",
-                    "birth_date deve vir em YYYY-MM-DD quando a data estiver legivel.",
-                    "Coloque informacoes extras em notes, como situacao da simulacao, data da ficha, consultor e condicoes de entrada.",
-                  ].join("\n"),
-                },
-                {
-                  inlineData: {
-                    mimeType: file.type,
-                    data: imageData,
-                  },
-                },
-              ],
+              inlineData: {
+                mimeType: file.type,
+                data: imageData,
+              },
             },
           ],
-          generationConfig: {
-            temperature: 0,
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: "object",
-              properties: {
-                full_name: { type: "string" },
-                cpf: { type: "string" },
-                phone: { type: "string" },
-                city: { type: "string" },
-                email: { type: "string" },
-                birth_date: { type: "string" },
-                license_category: { type: "string", enum: ["a", "ab", "nao_possui"] },
-                motorcycle_model: { type: "string" },
-                desired_color: { type: "string" },
-                intended_down_payment: { type: "string" },
-                payment_method: { type: "string", enum: ["financiamento", "cartao", "a_vista", "consorcio", "outro"] },
-                other_payment_method: { type: "string" },
-                notes: { type: "string" },
-              },
-              required: [
-                "full_name",
-                "cpf",
-                "phone",
-                "city",
-                "email",
-                "birth_date",
-                "license_category",
-                "motorcycle_model",
-                "desired_color",
-                "intended_down_payment",
-                "payment_method",
-                "other_payment_method",
-                "notes",
-              ],
-            },
-          },
-        }),
+        },
+      ],
+    };
+    const withSchemaBody = {
+      ...baseBody,
+      generationConfig: {
+        temperature: 0,
+        responseMimeType: "application/json",
+        responseSchema: fichaResponseSchema(),
+      },
+    };
+    const plainJsonBody = {
+      ...baseBody,
+      generationConfig: {
+        temperature: 0,
+        responseMimeType: "application/json",
+      },
+    };
+
+    let response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(withSchemaBody),
+    });
+
+    let responseText = "";
+    if (!response.ok) {
+      responseText = await response.text();
+      if (response.status === 400 && responseText.toLowerCase().includes("schema")) {
+        response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(plainJsonBody),
+        });
+        responseText = "";
       }
-    );
+    }
 
     if (!response.ok) {
-      console.error("extractFichaAction.gemini", response.status, await response.text());
-      return fichaErrorState("Nao foi possivel ler a ficha agora. Tente novamente.");
+      const detail = responseText || await response.text();
+      console.error("extractFichaAction.gemini", {
+        status: response.status,
+        model: normalizedModel,
+        detail: detail.slice(0, 500),
+      });
+      return fichaErrorState(geminiErrorMessage(response.status, detail));
     }
 
     const payload = await response.json();
@@ -367,7 +425,7 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
     return {
       ok: true,
       message: "Ficha lida pela IA. Confira tudo antes de salvar.",
-      extracted: normalizeFichaLead(JSON.parse(text)),
+      extracted: normalizeFichaLead(JSON.parse(extractJsonText(text))),
     };
   } catch (error) {
     console.error("extractFichaAction", error instanceof Error ? error.message : "unknown");
