@@ -1,0 +1,264 @@
+{
+  "project": {
+    "kind": "Supabase local homologation",
+    "url": "http://127.0.0.1:54321"
+  },
+  "migration": "20260715120000_persistence_auth_permissions_audit.sql",
+  "runId": "20260715175240",
+  "users": [
+    {
+      "email": "admin.20260715175240@homologacao.local",
+      "role": "admin",
+      "profile_id": "dc4401a2-7d64-4046-8563-8a891efc9b8d"
+    },
+    {
+      "email": "vendedor1.20260715175240@homologacao.local",
+      "role": "vendedor",
+      "profile_id": "1c9a8ab9-33c6-4e5b-9877-cdf4b086f007"
+    },
+    {
+      "email": "vendedor2.20260715175240@homologacao.local",
+      "role": "vendedor",
+      "profile_id": "4ba58490-0fe0-4e4c-9aea-6106c729a380"
+    }
+  ],
+  "data": {
+    "banks": [
+      "Banco BV",
+      "Banco PAN",
+      "Outro",
+      "Santander"
+    ],
+    "leadCount": 5,
+    "timelineEventCount": 16,
+    "statusHistoryCount": 4,
+    "generatedPasswordStoredInReport": false
+  },
+  "checks": [
+    {
+      "name": "initial banks exist",
+      "pass": true,
+      "details": {
+        "banks": [
+          "Banco BV",
+          "Banco PAN",
+          "Outro",
+          "Santander"
+        ]
+      }
+    },
+    {
+      "name": "five fictitious leads inserted",
+      "pass": true,
+      "details": {
+        "count": 5
+      }
+    },
+    {
+      "name": "cpf normalized",
+      "pass": true,
+      "details": {
+        "cpfs": [
+          "12345678901",
+          "12345678902",
+          "12345678903",
+          "12345678904",
+          "12345678905"
+        ]
+      }
+    },
+    {
+      "name": "phone normalized",
+      "pass": true,
+      "details": {
+        "phones": [
+          "11900000001",
+          "11900000002",
+          "11900000003",
+          "11900000004",
+          "11900000005"
+        ]
+      }
+    },
+    {
+      "name": "duplicate alert returns possible match without blocking inserts",
+      "pass": true,
+      "details": {
+        "count": 1,
+        "sample": {
+          "id": "f616be02-4aef-4ba2-9b70-9d0819964cfe",
+          "full_name": "Ana Teste Homologacao",
+          "masked_cpf": "***.***.***-**",
+          "masked_phone": "*******0001",
+          "city": "Sao Paulo",
+          "status": "novo_lead",
+          "duplicate_reason": "cpf, telefone"
+        }
+      }
+    },
+    {
+      "name": "lead interest created",
+      "pass": true,
+      "details": {}
+    },
+    {
+      "name": "denied simulation requires reason",
+      "pass": true,
+      "details": {
+        "error": "new row for relation \"simulations\" violates check constraint \"simulations_denial_reason_required\"",
+        "rows": null
+      }
+    },
+    {
+      "name": "simulation with bank response persisted",
+      "pass": true,
+      "details": {}
+    },
+    {
+      "name": "automatic follow-up created",
+      "pass": true,
+      "details": {
+        "count": 1
+      }
+    },
+    {
+      "name": "follow-up completion and postponement persisted",
+      "pass": true,
+      "details": {}
+    },
+    {
+      "name": "admin sees all leads",
+      "pass": true,
+      "details": {
+        "count": 5
+      }
+    },
+    {
+      "name": "seller one sees only assigned leads",
+      "pass": true,
+      "details": {
+        "count": 2
+      }
+    },
+    {
+      "name": "seller two sees only assigned leads",
+      "pass": true,
+      "details": {
+        "count": 3
+      }
+    },
+    {
+      "name": "seller cannot access other seller lead by id",
+      "pass": true,
+      "details": {
+        "rows": 0
+      }
+    },
+    {
+      "name": "seller cannot change owner",
+      "pass": true,
+      "details": {
+        "error": "Vendedor não pode alterar responsável do lead.",
+        "rows": null
+      }
+    },
+    {
+      "name": "seller cannot activate or deactivate lead",
+      "pass": true,
+      "details": {
+        "error": "Vendedor não pode ativar ou desativar lead.",
+        "rows": null
+      }
+    },
+    {
+      "name": "seller cannot mark lead lost",
+      "pass": true,
+      "details": {
+        "error": "Vendedor não pode marcar lead como perdido.",
+        "rows": null
+      }
+    },
+    {
+      "name": "seller cannot correct simulation",
+      "pass": true,
+      "details": {
+        "error": null,
+        "rows": 0
+      }
+    },
+    {
+      "name": "deactivated user cannot access records",
+      "pass": true,
+      "details": {
+        "rows": 0,
+        "error": null
+      }
+    },
+    {
+      "name": "unauthenticated user cannot access tables",
+      "pass": true,
+      "details": {
+        "error": "permission denied for table leads"
+      }
+    },
+    {
+      "name": "admin can perform administrative actions",
+      "pass": true,
+      "details": {}
+    },
+    {
+      "name": "dashboard, filters and search queries return persisted data",
+      "pass": true,
+      "details": {
+        "dashboardRows": 5,
+        "searchRows": 5,
+        "filteredRows": 1
+      }
+    },
+    {
+      "name": "no generic lead edited timeline event",
+      "pass": true,
+      "details": {
+        "count": 0
+      }
+    },
+    {
+      "name": "simulation creates one consolidated event",
+      "pass": true,
+      "details": {
+        "count": 1
+      }
+    },
+    {
+      "name": "timeline contains expected event types",
+      "pass": true,
+      "details": {
+        "eventTypes": [
+          "assigned_user_changed",
+          "follow_up_completed",
+          "follow_up_postponed",
+          "follow_up_scheduled",
+          "lead_created",
+          "lead_lost",
+          "note_added",
+          "sale_finished",
+          "simulation_created",
+          "status_changed"
+        ]
+      }
+    },
+    {
+      "name": "status changes generate history",
+      "pass": true,
+      "details": {
+        "count": 4
+      }
+    },
+    {
+      "name": "activity logs do not contain sensitive field names",
+      "pass": true,
+      "details": {}
+    }
+  ],
+  "errors": []
+}
