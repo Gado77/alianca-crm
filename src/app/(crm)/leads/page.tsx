@@ -31,10 +31,10 @@ export default async function LeadsPage({ searchParams }: { searchParams?: Promi
           <h1 className="mt-1 text-2xl font-black text-[#031A4A] sm:text-3xl">Clientes</h1>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
-          <button type="button" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-black text-slate-700">
+          <Link href="/leads/importar" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-black text-slate-700">
             <FileScan className="h-4 w-4" />
             Importar Ficha
-          </button>
+          </Link>
           <Link href="/leads/novo" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#E84A2A] px-4 text-sm font-black text-white">
             <Plus className="h-4 w-4" />
             Novo Lead

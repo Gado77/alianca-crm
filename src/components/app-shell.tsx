@@ -155,6 +155,7 @@ function SheetLink({ href, label, icon: Icon, onClick }: { href: string; label: 
 
 function sectionTitle(pathname: string) {
   if (pathname.startsWith("/leads/novo")) return "Novo Lead";
+  if (pathname.startsWith("/leads/importar")) return "Importar ficha";
   if (pathname.startsWith("/leads/")) return "Lead";
   if (pathname.startsWith("/leads")) return "Leads";
   if (pathname.startsWith("/retornos")) return "Retornos";
