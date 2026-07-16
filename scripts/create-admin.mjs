@@ -1,6 +1,9 @@
+import fs from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { createClient } from "@supabase/supabase-js";
+
+loadLocalEnv();
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -15,6 +18,20 @@ const supabase = createClient(url, serviceKey, {
 });
 
 const rl = createInterface({ input, output });
+
+function loadLocalEnv() {
+  for (const file of [".env.local", ".env"]) {
+    if (!fs.existsSync(file)) continue;
+    const lines = fs.readFileSync(file, "utf8").split(/\r?\n/);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+      if (!match || process.env[match[1]]) continue;
+      process.env[match[1]] = match[2].replace(/^["']|["']$/g, "");
+    }
+  }
+}
 
 function sanitizeText(value) {
   return value.trim().replace(/\s+/g, " ");
