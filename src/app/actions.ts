@@ -182,7 +182,7 @@ function geminiErrorMessage(status: number, detail: string) {
   if (status === 401 || status === 403) return "A chave Gemini nao tem permissao para essa chamada. Confira a chave e restricoes no Google AI Studio.";
   if (status === 404) return "Nenhum modelo Gemini testado ficou disponivel nessa chave. Confira se a chave e do Google AI Studio e se a Generative Language API esta ativa.";
   if (status === 413) return "A foto ficou grande demais para a IA. Tente uma imagem mais leve.";
-  if (status === 429) return "Limite gratuito do Gemini atingido agora. Aguarde um pouco e tente novamente.";
+  if (status === 429) return "O Gemini bloqueou por limite de uso agora. Aguarde alguns minutos e tente novamente; se persistir, confira a cota do projeto no Google AI Studio.";
   if (status >= 500) return "O Gemini ficou indisponivel no momento. Tente novamente em instantes.";
   return "Nao foi possivel ler a ficha agora. Tente novamente.";
 }
@@ -198,13 +198,7 @@ function extractJsonText(text: string) {
 
 function geminiModelCandidates(configuredModel: string) {
   const configured = configuredModel.trim().replace(/^models\//, "");
-  return Array.from(new Set([
-    configured,
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
-  ].filter(Boolean)));
+  return configured || "gemini-2.5-flash";
 }
 
 async function requireActiveProfile() {
@@ -402,29 +396,24 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
     let responseText = "";
     let usedModel = "";
 
-    for (const candidateModel of geminiModelCandidates(model)) {
-      usedModel = candidateModel;
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(candidateModel)}:generateContent?key=${apiKey}`;
-      response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(withSchemaBody),
-      });
+    usedModel = geminiModelCandidates(model);
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(usedModel)}:generateContent?key=${apiKey}`;
+    response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(withSchemaBody),
+    });
 
-      responseText = "";
-      if (!response.ok) {
-        responseText = await response.text();
-        if (response.status === 400 && responseText.toLowerCase().includes("schema")) {
-          response = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(plainJsonBody),
-          });
-          responseText = "";
-        }
+    if (!response.ok) {
+      responseText = await response.text();
+      if (response.status === 400 && responseText.toLowerCase().includes("schema")) {
+        response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(plainJsonBody),
+        });
+        responseText = "";
       }
-
-      if (response.ok || response.status !== 404) break;
     }
 
     if (!response) {
