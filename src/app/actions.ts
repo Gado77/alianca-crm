@@ -13,12 +13,113 @@ export type ActionState = {
   fieldErrors?: Record<string, string[] | undefined>;
 };
 
+export type FichaExtractedLead = {
+  full_name: string;
+  cpf: string;
+  phone: string;
+  city: string;
+  email: string;
+  birth_date: string;
+  license_category: "a" | "ab" | "nao_possui";
+  motorcycle_model: string;
+  desired_color: string;
+  intended_down_payment: number | "";
+  payment_method: "financiamento" | "cartao" | "a_vista" | "consorcio" | "outro";
+  other_payment_method: string;
+  notes: string;
+};
+
+export type FichaImportState = ActionState & {
+  extracted?: FichaExtractedLead;
+};
+
 function formObject(formData: FormData) {
   return Object.fromEntries(formData.entries());
 }
 
 function errorState(message: string, fieldErrors?: ActionState["fieldErrors"]): ActionState {
   return { ok: false, message, fieldErrors };
+}
+
+function fichaErrorState(message: string): FichaImportState {
+  return { ok: false, message };
+}
+
+function normalizeFichaLead(raw: Record<string, unknown>): FichaExtractedLead {
+  const stringValue = (key: string) => (typeof raw[key] === "string" ? raw[key].trim() : "");
+  const cpf = onlyDigits(stringValue("cpf")).slice(0, 11);
+  const phone = normalizeFichaPhone(stringValue("phone"));
+  const birthDate = normalizeFichaDate(stringValue("birth_date"));
+  const paymentMethod = normalizeFichaPayment(stringValue("payment_method"));
+  const licenseCategory = normalizeFichaLicense(stringValue("license_category"));
+  const downPayment = normalizeFichaMoney(raw.intended_down_payment);
+  const model = normalizeFichaModel(stringValue("motorcycle_model"));
+
+  return {
+    full_name: stringValue("full_name"),
+    cpf,
+    phone,
+    city: stringValue("city"),
+    email: stringValue("email"),
+    birth_date: birthDate,
+    license_category: licenseCategory,
+    motorcycle_model: model,
+    desired_color: stringValue("desired_color"),
+    intended_down_payment: downPayment,
+    payment_method: paymentMethod,
+    other_payment_method: stringValue("other_payment_method"),
+    notes: stringValue("notes"),
+  };
+}
+
+function normalizeFichaPhone(value: string) {
+  const digits = onlyDigits(value);
+  if (digits.startsWith("55") && digits.length > 11) return digits.slice(2, 13);
+  return digits.slice(0, 11);
+}
+
+function normalizeFichaDate(value: string) {
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const match = trimmed.match(/(\d{1,2})\D+(\d{1,2})\D+(\d{2,4})/);
+  if (!match) return "";
+  const day = match[1].padStart(2, "0");
+  const month = match[2].padStart(2, "0");
+  const yearNumber = Number(match[3]);
+  const year = yearNumber < 100 ? String(yearNumber > 30 ? 1900 + yearNumber : 2000 + yearNumber) : match[3];
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeFichaLicense(value: string): FichaExtractedLead["license_category"] {
+  const normalized = value.toLowerCase();
+  if (normalized.includes("ab") || normalized.includes("a e b")) return "ab";
+  if (normalized === "a" || normalized.includes("categoria a") || normalized.includes("sim")) return "a";
+  return "nao_possui";
+}
+
+function normalizeFichaPayment(value: string): FichaExtractedLead["payment_method"] {
+  const normalized = value.toLowerCase();
+  if (normalized.includes("cart")) return "cartao";
+  if (normalized.includes("vista")) return "a_vista";
+  if (normalized.includes("cons")) return "consorcio";
+  if (normalized.includes("outro")) return "outro";
+  return "financiamento";
+}
+
+function normalizeFichaMoney(value: unknown): number | "" {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return "";
+  const digits = value.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".");
+  const parsed = Number(digits);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : "";
+}
+
+function normalizeFichaModel(value: string) {
+  const normalized = value.toUpperCase().replace(/\s+/g, " ").trim();
+  if (normalized.includes("160")) return "AZ 160 X-TREME";
+  if (normalized.includes("125")) return "AZ125-ALFA";
+  if (normalized.includes("AZ1")) return "AZ1";
+  return value;
 }
 
 async function requireActiveProfile() {
@@ -156,6 +257,122 @@ export async function createLeadAction(_prev: ActionState, formData: FormData): 
 
   revalidatePath("/", "layout");
   redirect(`/leads/${lead.id}`);
+}
+
+export async function extractFichaAction(_prev: FichaImportState, formData: FormData): Promise<FichaImportState> {
+  await requireActiveProfile();
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  if (!apiKey) {
+    return fichaErrorState("Configure GEMINI_API_KEY no ambiente do servidor para ler fichas por IA.");
+  }
+
+  const file = formData.get("ficha");
+  if (!(file instanceof File) || file.size === 0) {
+    return fichaErrorState("Envie uma foto da ficha.");
+  }
+  if (!file.type.startsWith("image/")) {
+    return fichaErrorState("Envie uma imagem JPG, PNG ou WEBP.");
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    return fichaErrorState("A imagem precisa ter ate 8 MB.");
+  }
+
+  try {
+    const imageData = Buffer.from(await file.arrayBuffer()).toString("base64");
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  text: [
+                    "Extraia os dados desta ficha manuscrita da Alianca Motos para cadastro de lead.",
+                    "Existem dois modelos de ficha. O objetivo e entender campos escritos e caixas marcadas.",
+                    "Leia CPF, telefone, data de nascimento, cidade/localizacao, CNH, modelo, cor, entrada e forma de pagamento.",
+                    "Considere caixa marcada quando houver X, risco, check ou rabisco dentro/proximo da opcao.",
+                    "Se financiamento estiver marcado, payment_method deve ser financiamento. Se a vista estiver marcado, a_vista. Se cartao, cartao. Se consorcio, consorcio.",
+                    "Se Tem habilitacao estiver marcado em Nao, use nao_possui. Se Sim e categoria vazia, use a. Se categoria A e B, use ab.",
+                    "Nunca invente dado. Se estiver ilegivel, deixe vazio.",
+                    "CPF e telefone podem vir formatados, mas retorne apenas numeros quando possivel.",
+                    "birth_date deve vir em YYYY-MM-DD quando a data estiver legivel.",
+                    "Coloque informacoes extras em notes, como situacao da simulacao, data da ficha, consultor e condicoes de entrada.",
+                  ].join("\n"),
+                },
+                {
+                  inlineData: {
+                    mimeType: file.type,
+                    data: imageData,
+                  },
+                },
+              ],
+            },
+          ],
+          generationConfig: {
+            temperature: 0,
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "object",
+              properties: {
+                full_name: { type: "string" },
+                cpf: { type: "string" },
+                phone: { type: "string" },
+                city: { type: "string" },
+                email: { type: "string" },
+                birth_date: { type: "string" },
+                license_category: { type: "string", enum: ["a", "ab", "nao_possui"] },
+                motorcycle_model: { type: "string" },
+                desired_color: { type: "string" },
+                intended_down_payment: { type: "string" },
+                payment_method: { type: "string", enum: ["financiamento", "cartao", "a_vista", "consorcio", "outro"] },
+                other_payment_method: { type: "string" },
+                notes: { type: "string" },
+              },
+              required: [
+                "full_name",
+                "cpf",
+                "phone",
+                "city",
+                "email",
+                "birth_date",
+                "license_category",
+                "motorcycle_model",
+                "desired_color",
+                "intended_down_payment",
+                "payment_method",
+                "other_payment_method",
+                "notes",
+              ],
+            },
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      console.error("extractFichaAction.gemini", response.status, await response.text());
+      return fichaErrorState("Nao foi possivel ler a ficha agora. Tente novamente.");
+    }
+
+    const payload = await response.json();
+    const text = payload?.candidates?.[0]?.content?.parts?.find((part: { text?: string }) => typeof part.text === "string")?.text;
+    if (!text) return fichaErrorState("A leitura nao retornou dados. Tente outra foto.");
+
+    return {
+      ok: true,
+      message: "Ficha lida pela IA. Confira tudo antes de salvar.",
+      extracted: normalizeFichaLead(JSON.parse(text)),
+    };
+  } catch (error) {
+    console.error("extractFichaAction", error instanceof Error ? error.message : "unknown");
+    return fichaErrorState("Nao foi possivel interpretar a ficha. Confira a foto e tente novamente.");
+  }
 }
 
 export async function updateLeadDetailsAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
