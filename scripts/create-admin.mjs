@@ -60,7 +60,7 @@ try {
 
   const fullName = sanitizeText(await rl.question("Full name: "));
   const email = sanitizeText(await rl.question("Email: "));
-  const password = await rl.question("Temporary password: ");
+  const password = (await rl.question("Temporary password: ")).trim();
 
   if (!fullName || !isValidEmail(email) || password.length < 8) {
     throw new Error("Full name, valid email and password with at least 8 characters are required.");
@@ -87,6 +87,14 @@ try {
     if (error) throw error;
     user = data.user;
     createdAuthUser = true;
+  } else {
+    const { data, error } = await supabase.auth.admin.updateUserById(user.id, {
+      password,
+      email_confirm: true,
+      user_metadata: { full_name: fullName },
+    });
+    if (error) throw error;
+    user = data.user;
   }
 
   const { error: profileError } = await supabase.from("profiles").upsert(
