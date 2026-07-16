@@ -180,7 +180,7 @@ function geminiErrorMessage(status: number, detail: string) {
   if (status === 400 && normalized.includes("schema")) return "O Gemini rejeitou o formato estruturado. Tente novamente.";
   if (status === 400) return "O Gemini recusou a imagem ou o modelo configurado. Confira GEMINI_MODEL na Vercel.";
   if (status === 401 || status === 403) return "A chave Gemini nao tem permissao para essa chamada. Confira a chave e restricoes no Google AI Studio.";
-  if (status === 404) return "Modelo Gemini nao encontrado. Use gemini-2.5-flash ou gemini-2.5-flash-lite.";
+  if (status === 404) return "Nenhum modelo Gemini testado ficou disponivel nessa chave. Confira se a chave e do Google AI Studio e se a Generative Language API esta ativa.";
   if (status === 413) return "A foto ficou grande demais para a IA. Tente uma imagem mais leve.";
   if (status === 429) return "Limite gratuito do Gemini atingido agora. Aguarde um pouco e tente novamente.";
   if (status >= 500) return "O Gemini ficou indisponivel no momento. Tente novamente em instantes.";
@@ -194,6 +194,17 @@ function extractJsonText(text: string) {
   const last = text.lastIndexOf("}");
   if (first >= 0 && last > first) return text.slice(first, last + 1);
   return text;
+}
+
+function geminiModelCandidates(configuredModel: string) {
+  const configured = configuredModel.trim().replace(/^models\//, "");
+  return Array.from(new Set([
+    configured,
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+  ].filter(Boolean)));
 }
 
 async function requireActiveProfile() {
@@ -355,8 +366,6 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
 
   try {
     const imageData = Buffer.from(await file.arrayBuffer()).toString("base64");
-    const normalizedModel = model.replace(/^models\//, "");
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(normalizedModel)}:generateContent?key=${apiKey}`;
     const baseBody = {
       contents: [
         {
@@ -389,30 +398,44 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
       },
     };
 
-    let response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(withSchemaBody),
-    });
-
+    let response: Response | null = null;
     let responseText = "";
-    if (!response.ok) {
-      responseText = await response.text();
-      if (response.status === 400 && responseText.toLowerCase().includes("schema")) {
-        response = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(plainJsonBody),
-        });
-        responseText = "";
+    let usedModel = "";
+
+    for (const candidateModel of geminiModelCandidates(model)) {
+      usedModel = candidateModel;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(candidateModel)}:generateContent?key=${apiKey}`;
+      response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(withSchemaBody),
+      });
+
+      responseText = "";
+      if (!response.ok) {
+        responseText = await response.text();
+        if (response.status === 400 && responseText.toLowerCase().includes("schema")) {
+          response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(plainJsonBody),
+          });
+          responseText = "";
+        }
       }
+
+      if (response.ok || response.status !== 404) break;
+    }
+
+    if (!response) {
+      return fichaErrorState("Nao foi possivel chamar o Gemini agora. Tente novamente.");
     }
 
     if (!response.ok) {
       const detail = responseText || await response.text();
       console.error("extractFichaAction.gemini", {
         status: response.status,
-        model: normalizedModel,
+        model: usedModel,
         detail: detail.slice(0, 500),
       });
       return fichaErrorState(geminiErrorMessage(response.status, detail));
@@ -424,7 +447,7 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
 
     return {
       ok: true,
-      message: "Ficha lida pela IA. Confira tudo antes de salvar.",
+      message: `Ficha lida pela IA (${usedModel}). Confira tudo antes de salvar.`,
       extracted: normalizeFichaLead(JSON.parse(extractJsonText(text))),
     };
   } catch (error) {
