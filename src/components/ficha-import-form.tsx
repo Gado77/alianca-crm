@@ -15,11 +15,21 @@ const initialState: FichaImportState = {
 export function FichaImportForm({ profile, profiles }: { profile?: ProfileRow | null; profiles: ProfileRow[] }) {
   const [state, action, pending] = useActionState(extractFichaAction, initialState);
   const [imageUrl, setImageUrl] = useState("");
+  const [localError, setLocalError] = useState("");
   const extracted = state.extracted;
   const previewStyle = useMemo(() => ({ backgroundImage: imageUrl ? `url(${imageUrl})` : undefined }), [imageUrl]);
 
   function handlePreview(file?: File) {
     if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setLocalError("Envie uma imagem JPG, PNG ou WEBP.");
+      return;
+    }
+    if (file.size > 6 * 1024 * 1024) {
+      setLocalError("A foto ficou grande demais. Tire outra foto mais leve ou reduza para ate 6 MB.");
+      return;
+    }
+    setLocalError("");
     if (imageUrl) URL.revokeObjectURL(imageUrl);
     setImageUrl(URL.createObjectURL(file));
   }
@@ -27,6 +37,7 @@ export function FichaImportForm({ profile, profiles }: { profile?: ProfileRow | 
   function reset() {
     if (imageUrl) URL.revokeObjectURL(imageUrl);
     setImageUrl("");
+    setLocalError("");
     window.location.reload();
   }
 
@@ -55,6 +66,7 @@ export function FichaImportForm({ profile, profiles }: { profile?: ProfileRow | 
               onChange={(event) => handlePreview(event.target.files?.[0])}
             />
           </label>
+          {localError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-bold text-red-700">{localError}</p>}
           {state.message && (
             <p className={`rounded-lg px-3 py-2 text-sm font-bold ${state.ok ? "bg-orange-50 text-orange-800" : "bg-red-50 text-red-700"}`}>
               {state.message}
@@ -62,7 +74,7 @@ export function FichaImportForm({ profile, profiles }: { profile?: ProfileRow | 
           )}
           <button
             type="submit"
-            disabled={pending}
+            disabled={pending || Boolean(localError)}
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#031A4A] px-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
             <FileScan className="h-4 w-4" />
