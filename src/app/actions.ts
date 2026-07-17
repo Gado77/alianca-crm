@@ -21,6 +21,20 @@ function errorState(message: string, fieldErrors?: ActionState["fieldErrors"]): 
   return { ok: false, message, fieldErrors };
 }
 
+function buildLeadNotes(notes?: string, registrationDate?: FormDataEntryValue) {
+  const parts = [];
+  const date = typeof registrationDate === "string" ? registrationDate.trim() : "";
+  if (date) parts.push(`Data da ficha: ${formatDateForNote(date)}`);
+  if (notes?.trim()) parts.push(notes.trim());
+  return parts.join("\n\n");
+}
+
+function formatDateForNote(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return value;
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
 async function requireActiveProfile() {
   const context = await getCurrentSessionProfile();
   if (!context.user || !context.profile?.active) {
@@ -144,11 +158,12 @@ export async function createLeadAction(_prev: ActionState, formData: FormData): 
     other_payment_method: data.other_payment_method || null,
   });
 
-  if (data.notes) {
+  const leadNotes = buildLeadNotes(data.notes, raw.registration_date);
+  if (leadNotes) {
     await supabase.from("lead_notes").insert({
       lead_id: lead.id,
       author_id: user.id,
-      content: data.notes,
+      content: leadNotes,
     });
   }
 

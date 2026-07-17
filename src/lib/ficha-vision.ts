@@ -7,6 +7,7 @@ export type FichaExtractedLead = {
   city: string;
   email: string;
   birth_date: string;
+  registration_date: string;
   license_category: "a" | "ab" | "nao_possui";
   motorcycle_model: string;
   desired_color: string;
@@ -101,16 +102,17 @@ function normalizeFichaLead(raw: Record<string, unknown>): FichaExtractedLead {
     full_name: stringValue("full_name"),
     cpf: onlyDigits(stringValue("cpf")).slice(0, 11),
     phone: normalizeFichaPhone(stringValue("phone")),
-    city: stringValue("city"),
+    city: normalizeFichaCity(stringValue("city"), stringValue("location_detail")),
     email: stringValue("email"),
     birth_date: normalizeFichaDate(stringValue("birth_date")),
+    registration_date: normalizeFichaDate(stringValue("registration_date")),
     license_category: normalizeFichaLicense(stringValue("license_category")),
     motorcycle_model: normalizeFichaModel(stringValue("motorcycle_model")),
     desired_color: stringValue("desired_color"),
     intended_down_payment: normalizeFichaMoney(raw.intended_down_payment),
     payment_method: normalizeFichaPayment(stringValue("payment_method")),
     other_payment_method: stringValue("other_payment_method"),
-    notes: stringValue("notes"),
+    notes: normalizeFichaNotes(raw),
   };
 }
 
@@ -118,6 +120,15 @@ function normalizeFichaPhone(value: string) {
   const digits = onlyDigits(value);
   if (digits.startsWith("55") && digits.length > 11) return digits.slice(2, 13);
   return digits.slice(0, 11);
+}
+
+function normalizeFichaCity(city: string, locationDetail: string) {
+  const cleanCity = city.trim();
+  const cleanLocation = locationDetail.trim();
+  if (!cleanLocation) return cleanCity;
+  if (!cleanCity) return cleanLocation;
+  if (cleanCity.toLowerCase().includes(cleanLocation.toLowerCase())) return cleanCity;
+  return `${cleanCity} - ${cleanLocation}`;
 }
 
 function normalizeFichaDate(value: string) {
@@ -134,8 +145,9 @@ function normalizeFichaDate(value: string) {
 
 function normalizeFichaLicense(value: string): FichaExtractedLead["license_category"] {
   const normalized = value.toLowerCase();
+  if (!normalized || normalized.includes("nao") || normalized.includes("não") || normalized.includes("sem marc")) return "nao_possui";
   if (normalized.includes("ab") || normalized.includes("a e b")) return "ab";
-  if (normalized === "a" || normalized.includes("categoria a") || normalized.includes("sim")) return "a";
+  if (normalized === "a" || normalized.includes("categoria a")) return "a";
   return "nao_possui";
 }
 
@@ -164,12 +176,31 @@ function normalizeFichaModel(value: string) {
   return value;
 }
 
+function normalizeFichaNotes(raw: Record<string, unknown>) {
+  const parts = [
+    stringValue(raw.notes),
+    stringValue(raw.location_detail) ? `Interior/localidade: ${stringValue(raw.location_detail)}` : "",
+    stringValue(raw.loose_notes),
+    stringValue(raw.uncertainty_notes) ? `Conferir leitura: ${stringValue(raw.uncertainty_notes)}` : "",
+  ].filter(Boolean);
+  return Array.from(new Set(parts)).join("\n");
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 function fichaPrompt() {
   return [
     "Extraia os dados desta ficha manuscrita da Alianca Motos para cadastro de lead.",
     "Leia campos escritos e caixas marcadas. Considere caixa marcada quando houver X, risco, check ou rabisco dentro/proximo da opcao.",
-    "Nunca invente dado. Se estiver ilegivel, deixe vazio.",
-    "Retorne somente JSON valido com as chaves: full_name, cpf, phone, city, email, birth_date, license_category, motorcycle_model, desired_color, intended_down_payment, payment_method, other_payment_method, notes.",
+    "Nunca invente dado. Se estiver ilegivel ou sem marcacao clara, deixe vazio ou use nao_possui quando for CNH.",
+    "CPF deve ter 11 digitos e telefone deve ter DDD mais numero com 10 ou 11 digitos. Nao corrija por chute; se houver duvida, registre em uncertainty_notes.",
+    "CNH: se a caixa SIM ou categoria nao estiver claramente marcada, retorne license_category como nao_possui. Se a caixa NAO estiver marcada, tambem retorne nao_possui.",
+    "Cidade: se a ficha tiver Localizacao impressa como Sao Jose do Piaui, use city como Sao Jose do Piaui. Se houver nome de interior/povoado/comunidade escrito em Cidade/Estado ou em outro lugar, coloque esse nome em location_detail.",
+    "Observacoes: capture qualquer anotacao solta no papel, mesmo fora do campo Observacoes, como parcelas, condicoes, entrada, '10x784' ou recados, em loose_notes.",
+    "Data do cadastro deve ir em registration_date no formato AAAA-MM-DD quando existir.",
+    "Retorne somente JSON valido com as chaves: full_name, cpf, phone, city, location_detail, email, birth_date, registration_date, license_category, motorcycle_model, desired_color, intended_down_payment, payment_method, other_payment_method, notes, loose_notes, uncertainty_notes.",
     "license_category deve ser a, ab ou nao_possui. payment_method deve ser financiamento, cartao, a_vista, consorcio ou outro.",
   ].join("\n");
 }

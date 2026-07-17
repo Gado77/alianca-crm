@@ -163,7 +163,7 @@ export function FichaImportForm({ profile, profiles }: { profile?: ProfileRow | 
 
             {extracted ? (
               <ReviewForm
-                key={`${extracted.full_name}-${extracted.cpf}-${extracted.phone}-${extracted.payment_method}`}
+                key={`${extracted.full_name}-${extracted.cpf}-${extracted.phone}-${extracted.payment_method}-${extracted.registration_date}`}
                 extracted={extracted}
                 profile={profile}
                 profiles={profiles}
@@ -240,7 +240,10 @@ function ReviewForm({
         <Field name="city" label="Cidade" defaultValue={extracted.city} required />
         <Field name="birth_date" label="Data de nascimento" type="date" defaultValue={extracted.birth_date} />
       </div>
-      <Field name="email" label="Email" type="email" defaultValue={extracted.email} />
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field name="registration_date" label="Data da ficha" type="date" defaultValue={extracted.registration_date} />
+        <Field name="email" label="Email" type="email" defaultValue={extracted.email} />
+      </div>
       <Select name="license_category" label="CNH" defaultValue={extracted.license_category}>
         <option value="nao_possui">Nao possui CNH</option>
         <option value="a">Categoria A</option>
