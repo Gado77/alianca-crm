@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     lead: selected,
     candidates,
     summary: parsed.summary || command,
-    actions: selected ? sanitizeActions(parsed.actions || []) : [],
+    actions: selected ? ensureUsefulActions(command, parsed.summary || command, sanitizeActions(parsed.actions || [])) : [],
     whatsapp_suggestion: parsed.whatsapp_suggestion || "",
     needs_confirmation: Boolean(selected),
   };
@@ -166,6 +166,88 @@ function sanitizeActions(actions: AssistantPlanAction[]) {
       return action;
     })
     .slice(0, 4);
+}
+
+function ensureUsefulActions(command: string, summary: string, actions: AssistantPlanAction[]) {
+  if (actions.length > 0) return actions;
+
+  const normalized = normalizeText(`${command} ${summary}`);
+  const now = new Date();
+  const addDays = (days: number) => {
+    const date = new Date(now);
+    date.setDate(date.getDate() + days);
+    date.setHours(9, 0, 0, 0);
+    return date.toISOString();
+  };
+
+  const baseNote = summary || command;
+
+  if (mentionsDeniedSimulation(normalized)) {
+    const days = normalized.includes("score") ? 60 : normalized.includes("ineleg") || normalized.includes("restri") ? 180 : 30;
+    const priority = days >= 180 ? "baixa" : "media";
+    return [
+      {
+        type: "note",
+        title: "Registrar simulação negada",
+        content: baseNote,
+      },
+      {
+        type: "status",
+        title: "Marcar simulação realizada",
+        status: "simulacao_realizada",
+      },
+      {
+        type: "follow_up",
+        title: "Tentar nova simulação",
+        reason: days === 60 ? "Tentar nova simulação: score baixo" : days === 180 ? "Tentar nova simulação: cliente inelegível" : "Tentar nova simulação após negativa",
+        due_at: addDays(days),
+        priority,
+      },
+    ] satisfies AssistantPlanAction[];
+  }
+
+  if (normalized.includes("marido") || normalized.includes("mulher") || normalized.includes("esposa") || normalized.includes("esposo")) {
+    return [
+      { type: "note", title: "Registrar objeção", content: baseNote },
+      {
+        type: "follow_up",
+        title: "Confirmar decisão com parceiro(a)",
+        reason: "Confirmar se conseguiu conversar com marido/esposa",
+        due_at: addDays(1),
+        priority: "alta",
+      },
+    ] satisfies AssistantPlanAction[];
+  }
+
+  if (normalized.includes("parcela") || normalized.includes("preco") || normalized.includes("valor") || normalized.includes("caro")) {
+    return [
+      { type: "note", title: "Registrar objeção de preço", content: baseNote },
+      {
+        type: "follow_up",
+        title: "Reavaliar condição",
+        reason: "Ver se parcela, entrada ou modelo ainda fazem sentido",
+        due_at: addDays(2),
+        priority: "alta",
+      },
+    ] satisfies AssistantPlanAction[];
+  }
+
+  return [
+    { type: "note", title: "Registrar atendimento", content: baseNote },
+    {
+      type: "follow_up",
+      title: "Continuar atendimento",
+      reason: "Ver se o cliente ainda tem interesse",
+      due_at: addDays(3),
+      priority: "media",
+    },
+  ] satisfies AssistantPlanAction[];
+}
+
+function mentionsDeniedSimulation(normalized: string) {
+  const hasSimulation = normalized.includes("simulacao") || normalized.includes("simular") || normalized.includes("proposta") || normalized.includes("banco");
+  const hasDenied = normalized.includes("negad") || normalized.includes("nao aprov") || normalized.includes("nao foi aprov") || normalized.includes("recus") || normalized.includes("reprov");
+  return hasSimulation && hasDenied;
 }
 
 function validFutureDate(value: string) {
