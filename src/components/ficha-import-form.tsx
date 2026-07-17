@@ -1,11 +1,12 @@
 "use client";
 
-import { useActionState, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import { Camera, FileScan, RotateCcw } from "lucide-react";
-import { createLeadFormAction, extractFichaAction, type FichaImportState } from "@/app/actions";
+import { createLeadFormAction } from "@/app/actions";
 import { SubmitButton } from "@/components/form-status";
 import { paymentLabels } from "@/lib/crm";
 import type { ProfileRow } from "@/lib/data";
+import type { FichaImportState } from "@/lib/ficha-gemini";
 
 const initialState: FichaImportState = {
   ok: false,
@@ -13,10 +14,11 @@ const initialState: FichaImportState = {
 };
 
 export function FichaImportForm({ profile, profiles }: { profile?: ProfileRow | null; profiles: ProfileRow[] }) {
-  const [state, action, pending] = useActionState(extractFichaAction, initialState);
+  const [state, setState] = useState<FichaImportState>(initialState);
   const [imageUrl, setImageUrl] = useState("");
   const [localError, setLocalError] = useState("");
   const [preparing, setPreparing] = useState(false);
+  const [pending, setPending] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const extracted = state.extracted;
   const previewStyle = useMemo(() => ({ backgroundImage: imageUrl ? `url(${imageUrl})` : undefined }), [imageUrl]);
@@ -61,10 +63,41 @@ export function FichaImportForm({ profile, profiles }: { profile?: ProfileRow | 
     window.location.reload();
   }
 
+  async function handleExtract(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const file = fileInputRef.current?.files?.[0];
+    if (!file) {
+      setLocalError("Envie uma foto da ficha.");
+      return;
+    }
+
+    setPending(true);
+    setState(initialState);
+    try {
+      const formData = new FormData();
+      formData.set("ficha", file);
+      const response = await fetch("/api/ficha/extract", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = await response.json().catch(() => null) as FichaImportState | null;
+      if (!payload) {
+        setState({ ok: false, message: "Nao foi possivel ler a resposta do servidor. Tente novamente." });
+        return;
+      }
+      setState(payload);
+    } catch (error) {
+      console.error("handleExtract", error instanceof Error ? error.message : "unknown");
+      setState({ ok: false, message: "Falha de conexao ao ler a ficha. Tente novamente." });
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <section className="rounded-xl bg-white p-4 shadow-sm">
-        <form action={action} className="grid gap-4">
+        <form onSubmit={handleExtract} className="grid gap-4">
           <div>
             <h2 className="text-lg font-black text-[#031A4A]">Escanear ficha</h2>
             <p className="mt-1 text-sm font-semibold text-slate-500">
