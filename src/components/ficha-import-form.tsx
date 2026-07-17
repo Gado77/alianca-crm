@@ -6,7 +6,7 @@ import { createLeadFormAction } from "@/app/actions";
 import { SubmitButton } from "@/components/form-status";
 import { paymentLabels } from "@/lib/crm";
 import type { ProfileRow } from "@/lib/data";
-import type { FichaImportState } from "@/lib/ficha-gemini";
+import type { FichaImportState } from "@/lib/ficha-vision";
 
 const initialState: FichaImportState = {
   ok: false,
