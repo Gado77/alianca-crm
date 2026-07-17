@@ -206,14 +206,15 @@ async function listGeminiModels(apiKey: string) {
 
 function chooseGeminiModel(configuredModel: string, availableModels: string[]) {
   const configured = configuredGeminiModel(configuredModel);
-  if (availableModels.includes(configured)) return configured;
   const preferred = [
+    "gemini-2.0-flash-001",
+    "gemini-2.0-flash-lite-001",
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
     "gemini-2.0-flash",
-    "gemini-1.5-flash",
     "gemini-flash-latest",
   ];
+  if (configured !== "auto" && availableModels.includes(configured)) return configured;
   return preferred.find((name) => availableModels.includes(name)) || availableModels.find((name) => /flash/i.test(name)) || availableModels[0] || configured;
 }
 
@@ -414,14 +415,16 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
     let responseText = "";
     const usedModel = selectedModel;
     let usedVersion = availableModels.version;
+    const attempts: string[] = [];
     for (const endpointVersion of geminiEndpointVersions(availableModels.version)) {
       usedVersion = endpointVersion;
-      const url = `https://generativelanguage.googleapis.com/${endpointVersion}/models/${encodeURIComponent(usedModel)}:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/${endpointVersion}/models/${usedModel}:generateContent?key=${apiKey}`;
       response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
       });
+      attempts.push(`${endpointVersion}:${response.status}`);
       if (response.ok) {
         responseText = "";
         break;
@@ -440,10 +443,11 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
         status: response.status,
         version: usedVersion,
         model: usedModel,
+        attempts,
         availableModels: availableModels.models.slice(0, 12),
         detail: detail.slice(0, 500),
       });
-      const suffix = response.status === 404 ? ` Modelos listados: ${availableModels.models.slice(0, 5).join(", ") || "nenhum"}.` : "";
+      const suffix = response.status === 404 ? ` Tentativas: ${attempts.join(", ")}. Modelo usado: ${usedModel}. Modelos listados: ${availableModels.models.slice(0, 5).join(", ") || "nenhum"}.` : "";
       return fichaErrorState(`${geminiErrorMessage(response.status, detail)}${suffix}`);
     }
 
