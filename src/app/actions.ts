@@ -138,53 +138,26 @@ function fichaPrompt() {
   ].join("\n");
 }
 
-function fichaResponseSchema() {
-  return {
-    type: "object",
-    properties: {
-      full_name: { type: "string" },
-      cpf: { type: "string" },
-      phone: { type: "string" },
-      city: { type: "string" },
-      email: { type: "string" },
-      birth_date: { type: "string" },
-      license_category: { type: "string", enum: ["a", "ab", "nao_possui"] },
-      motorcycle_model: { type: "string" },
-      desired_color: { type: "string" },
-      intended_down_payment: { type: "string" },
-      payment_method: { type: "string", enum: ["financiamento", "cartao", "a_vista", "consorcio", "outro"] },
-      other_payment_method: { type: "string" },
-      notes: { type: "string" },
-    },
-    required: [
-      "full_name",
-      "cpf",
-      "phone",
-      "city",
-      "email",
-      "birth_date",
-      "license_category",
-      "motorcycle_model",
-      "desired_color",
-      "intended_down_payment",
-      "payment_method",
-      "other_payment_method",
-      "notes",
-    ],
-  };
-}
-
 function geminiErrorMessage(status: number, detail: string) {
   const normalized = detail.toLowerCase();
+  const parsedDetail = geminiErrorDetail(detail);
   if (status === 400 && normalized.includes("api key")) return "A chave Gemini parece invalida. Confira GEMINI_API_KEY na Vercel.";
-  if (status === 400 && normalized.includes("schema")) return "O Gemini rejeitou o formato estruturado. Tente novamente.";
-  if (status === 400) return "O Gemini recusou a imagem ou o modelo configurado. Confira GEMINI_MODEL na Vercel.";
+  if (status === 400) return `O Gemini recusou a imagem ou a chamada. ${parsedDetail ? `Detalhe: ${parsedDetail}` : "Tente outra foto ou confira GEMINI_MODEL na Vercel."}`;
   if (status === 401 || status === 403) return "A chave Gemini nao tem permissao para essa chamada. Confira a chave e restricoes no Google AI Studio.";
   if (status === 404) return "Nenhum modelo Gemini testado ficou disponivel nessa chave. Confira se a chave e do Google AI Studio e se a Generative Language API esta ativa.";
   if (status === 413) return "A foto ficou grande demais para a IA. Tente uma imagem mais leve.";
   if (status === 429) return "O Gemini bloqueou por limite de uso agora. Aguarde alguns minutos e tente novamente; se persistir, confira a cota do projeto no Google AI Studio.";
   if (status >= 500) return "O Gemini ficou indisponivel no momento. Tente novamente em instantes.";
   return "Nao foi possivel ler a ficha agora. Tente novamente.";
+}
+
+function geminiErrorDetail(detail: string) {
+  try {
+    const parsed = JSON.parse(detail) as { error?: { message?: string } };
+    return parsed.error?.message?.replace(/\s+/g, " ").slice(0, 180) || "";
+  } catch {
+    return detail.replace(/\s+/g, " ").slice(0, 180);
+  }
 }
 
 function extractJsonText(text: string) {
@@ -199,6 +172,11 @@ function extractJsonText(text: string) {
 function configuredGeminiModel(configuredModel: string) {
   const configured = configuredModel.trim().replace(/^models\//, "");
   return configured || "gemini-2.5-flash";
+}
+
+function normalizeImageMimeType(type: string) {
+  if (type === "image/jpg") return "image/jpeg";
+  return type;
 }
 
 async function listGeminiModels(apiKey: string) {
@@ -398,6 +376,7 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
 
   try {
     const imageData = Buffer.from(await file.arrayBuffer()).toString("base64");
+    const mimeType = normalizeImageMimeType(file.type);
     const availableModels = await listGeminiModels(apiKey);
     if (!availableModels.ok) return fichaErrorState(availableModels.message);
     if (availableModels.models.length === 0) {
@@ -412,7 +391,7 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
             { text: fichaPrompt() },
             {
               inlineData: {
-                mimeType: file.type,
+                mimeType,
                 data: imageData,
               },
             },
@@ -420,15 +399,7 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
         },
       ],
     };
-    const withSchemaBody = {
-      ...baseBody,
-      generationConfig: {
-        temperature: 0,
-        responseMimeType: "application/json",
-        responseSchema: fichaResponseSchema(),
-      },
-    };
-    const plainJsonBody = {
+    const requestBody = {
       ...baseBody,
       generationConfig: {
         temperature: 0,
@@ -443,19 +414,11 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
     response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(withSchemaBody),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
       responseText = await response.text();
-      if (response.status === 400 && responseText.toLowerCase().includes("schema")) {
-        response = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(plainJsonBody),
-        });
-        responseText = "";
-      }
     }
 
     if (!response) {
