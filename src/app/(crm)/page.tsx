@@ -4,7 +4,7 @@ import { completeFollowUpFormAction, postponeFollowUpFormAction } from "@/app/ac
 import { SubmitButton } from "@/components/form-status";
 import { WhatsappButton } from "@/components/whatsapp-button";
 import { getLeadCollections } from "@/lib/data";
-import { formatDateTime, statusLabels, whatsappMessage, whatsappUrl } from "@/lib/crm";
+import { followUpPriorityLabels, formatDateTime, statusLabels, whatsappMessage, whatsappUrl } from "@/lib/crm";
 
 function startOfToday() {
   const date = new Date();
@@ -37,6 +37,13 @@ export default async function TodayPage() {
     return due >= todayStart && due <= todayEnd;
   });
   const pendingSimulations = simulations.filter((item) => item.result === "pendente");
+  const pendingFollowUpLeadIds = new Set(pendingFollowUps.map((item) => item.lead_id));
+  const activeOpenLeads = leads.filter((lead) => lead.active && !["venda_finalizada", "perdido"].includes(lead.status));
+  const leadsWithoutNextStep = activeOpenLeads.filter((lead) => !pendingFollowUpLeadIds.has(lead.id));
+  const staleLeads = leadsWithoutNextStep.filter((lead) => {
+    const lastContact = lead.last_contact_at || lead.created_at;
+    return todayStart.getTime() - new Date(lastContact).getTime() > 7 * 86400000;
+  });
 
   const queue = pendingFollowUps
     .map((followUp) => {
@@ -49,8 +56,11 @@ export default async function TodayPage() {
     })
     .filter((item) => item.lead)
     .sort((a, b) => {
+      const priority = { urgente: 0, alta: 1, media: 2, baixa: 3 } as Record<string, number>;
       if (a.isOverdue !== b.isOverdue) return a.isOverdue ? -1 : 1;
       if (a.isToday !== b.isToday) return a.isToday ? -1 : 1;
+      const priorityDiff = (priority[a.followUp.priority] ?? 4) - (priority[b.followUp.priority] ?? 4);
+      if (priorityDiff !== 0) return priorityDiff;
       return a.due.getTime() - b.due.getTime();
     });
 
@@ -71,6 +81,27 @@ export default async function TodayPage() {
         <Metric title="Atrasados" value={overdue.length} />
         <Metric title="Hoje" value={today.length} />
         <Metric title="Simulações pendentes" value={pendingSimulations.length} />
+      </section>
+
+      <section className="grid gap-3 lg:grid-cols-3">
+        <SmartCard
+          title="Clientes sem próximo passo"
+          value={leadsWithoutNextStep.length}
+          description="Clientes abertos sem lembrete de contato. Vale revisar para ninguém esfriar."
+          href="/leads?status=sem_retorno"
+        />
+        <SmartCard
+          title="Parados há mais de 7 dias"
+          value={staleLeads.length}
+          description="Clientes sem contato recente e sem lembrete. Boa fila para recuperar oportunidade."
+          href="/leads?status=sem_retorno"
+        />
+        <SmartCard
+          title="Simulações aguardando"
+          value={pendingSimulations.length}
+          description="Propostas pendentes que precisam de resposta, cobrança ou atualização."
+          href="/leads?status=aguardando_simulacao"
+        />
       </section>
 
       <section className="space-y-3">
@@ -105,6 +136,7 @@ export default async function TodayPage() {
                   <p className="mt-1 text-sm font-semibold text-slate-500">{interest?.motorcycle_model || "Sem modelo"} · {lead.city}</p>
                   <div className="mt-3 grid gap-1 text-sm font-bold text-slate-600">
                     <span>Motivo: {followUp.reason || statusLabels[lead.status as keyof typeof statusLabels]}</span>
+                    <span>Prioridade: {followUpPriorityLabels[followUp.priority] || followUp.priority}</span>
                     <span>Data: {formatDateTime(followUp.due_at)}</span>
                   </div>
                 </div>
@@ -141,6 +173,19 @@ function Metric({ title, value }: { title: string; value: number }) {
       </div>
       <p className="mt-2 text-3xl font-black text-[#031A4A]">{value}</p>
     </article>
+  );
+}
+
+function SmartCard({ title, value, description, href }: { title: string; value: number; description: string; href: string }) {
+  return (
+    <Link href={href} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-orange-200">
+      <p className="text-xs font-black uppercase tracking-wide text-orange-600">Sinal inteligente</p>
+      <div className="mt-2 flex items-start justify-between gap-3">
+        <h2 className="text-base font-black text-[#031A4A]">{title}</h2>
+        <span className="rounded-lg bg-slate-100 px-2 py-1 text-sm font-black text-slate-700">{value}</span>
+      </div>
+      <p className="mt-2 text-sm font-semibold text-slate-500">{description}</p>
+    </Link>
   );
 }
 

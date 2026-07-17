@@ -13,7 +13,7 @@ const primary = [
   { href: "/", label: "Hoje", icon: House },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/retornos", label: "Retornos", icon: CalendarClock },
-  { href: "/pipeline", label: "Pipeline", icon: Columns3 },
+  { href: "/pipeline", label: "Funil", icon: Columns3 },
 ];
 
 const mobilePrimary = primary.slice(0, 3);
@@ -107,7 +107,7 @@ export function AppShell({ children, profile, pendingCount }: { children: React.
           <div className="absolute inset-x-0 bottom-0 rounded-t-2xl bg-white p-4 pb-[calc(18px+env(safe-area-inset-bottom))]" onClick={(event) => event.stopPropagation()}>
             <div className="mx-auto mb-4 h-1 w-12 rounded-full bg-slate-200" />
             <div className="grid gap-2">
-              <SheetLink href="/pipeline" label="Pipeline" icon={Columns3} onClick={() => setMoreOpen(false)} />
+              <SheetLink href="/pipeline" label="Funil" icon={Columns3} onClick={() => setMoreOpen(false)} />
               {isAdmin && (
                 <>
                   <div className="mt-2 flex items-center gap-2 px-1 text-xs font-black uppercase tracking-[0.16em] text-slate-400">
@@ -159,7 +159,7 @@ function sectionTitle(pathname: string) {
   if (pathname.startsWith("/leads/")) return "Lead";
   if (pathname.startsWith("/leads")) return "Leads";
   if (pathname.startsWith("/retornos")) return "Retornos";
-  if (pathname.startsWith("/pipeline")) return "Pipeline";
+  if (pathname.startsWith("/pipeline")) return "Funil";
   if (pathname.startsWith("/estatisticas")) return "Resumo Mensal";
   if (pathname.startsWith("/bancos")) return "Bancos";
   if (pathname.startsWith("/usuarios")) return "Equipe";

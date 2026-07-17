@@ -19,8 +19,13 @@ export default async function LeadsPage({ searchParams }: { searchParams?: Promi
 
   const filtered = leads.filter((lead) => {
     const interest = interestByLead.get(lead.id);
+    const next = nextFollowUpByLead.get(lead.id);
     const haystack = `${lead.full_name} ${lead.cpf} ${lead.phone} ${lead.city} ${interest?.motorcycle_model || ""}`.toLowerCase();
-    return lead.active && haystack.includes(query) && (status === "todos" || lead.status === status);
+    const statusMatches =
+      status === "todos" ||
+      lead.status === status ||
+      (status === "sem_retorno" && !next && !["venda_finalizada", "perdido"].includes(lead.status));
+    return lead.active && haystack.includes(query) && statusMatches;
   });
 
   return (
@@ -51,6 +56,7 @@ export default async function LeadsPage({ searchParams }: { searchParams?: Promi
           <summary className="cursor-pointer text-sm font-black text-slate-600">Filtros</summary>
           <select name="status" defaultValue={status} className="mt-2 min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-bold">
             <option value="todos">Todos</option>
+            <option value="sem_retorno">Sem próximo passo</option>
             {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </details>
@@ -62,6 +68,7 @@ export default async function LeadsPage({ searchParams }: { searchParams?: Promi
         {filtered.map((lead) => {
           const interest = interestByLead.get(lead.id);
           const next = nextFollowUpByLead.get(lead.id);
+          const suggestion = leadSuggestion(lead.status, Boolean(next));
           return (
             <article key={lead.id} className="rounded-xl bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -75,6 +82,9 @@ export default async function LeadsPage({ searchParams }: { searchParams?: Promi
                   <p className="mt-2 text-sm font-bold text-slate-600">
                     Próxima ação: {next ? `${next.reason} · ${formatDateTime(next.due_at)}` : "Sem retorno marcado"}
                   </p>
+                  <p className={`mt-2 rounded-lg px-3 py-2 text-xs font-black ${suggestion.tone}`}>
+                    {suggestion.text}
+                  </p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2 lg:w-[260px]">
                   <WhatsappButton leadId={lead.id} href={whatsappUrl(lead.phone, whatsappMessage({ full_name: lead.full_name, phone: lead.phone, status: lead.status, model: interest?.motorcycle_model }))} />
@@ -87,4 +97,13 @@ export default async function LeadsPage({ searchParams }: { searchParams?: Promi
       </section>
     </div>
   );
+}
+
+function leadSuggestion(status: string, hasNextStep: boolean) {
+  if (status === "venda_finalizada") return { text: "Venda finalizada. Acompanhe pós-venda quando fizer sentido.", tone: "bg-emerald-50 text-emerald-700" };
+  if (status === "perdido") return { text: "Cliente marcado como perdido. Reabrir só se houver novo interesse.", tone: "bg-slate-100 text-slate-600" };
+  if (!hasNextStep) return { text: "Sem próximo passo. Crie um lembrete para não esfriar o atendimento.", tone: "bg-amber-50 text-amber-800" };
+  if (status === "aprovado") return { text: "Aprovado. Próximo foco: documentação e fechamento.", tone: "bg-emerald-50 text-emerald-700" };
+  if (status === "aguardando_simulacao") return { text: "Aguardando simulação. Confira banco, retorno ou pendência.", tone: "bg-blue-50 text-blue-700" };
+  return { text: "Atendimento com próximo passo marcado.", tone: "bg-slate-50 text-slate-600" };
 }

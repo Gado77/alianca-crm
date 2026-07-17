@@ -21,11 +21,14 @@ export function PipelineBoard({ leads }: { leads: PipelineLead[] }) {
   const [pending, startTransition] = useTransition();
 
   function persistStatus(leadId: string, status: string) {
+    const lostReason = status === "perdido" ? window.prompt("Motivo da perda")?.trim() : "";
+    if (status === "perdido" && !lostReason) return;
     setItems((current) => current.map((lead) => (lead.id === leadId ? { ...lead, status } : lead)));
     startTransition(async () => {
       const formData = new FormData();
       formData.set("lead_id", leadId);
       formData.set("status", status);
+      if (lostReason) formData.set("lost_reason", lostReason);
       await updateLeadStatusFormAction(formData);
       setDraggingId(null);
     });
@@ -79,9 +82,6 @@ export function PipelineBoard({ leads }: { leads: PipelineLead[] }) {
                     >
                       {pipelineStatuses.map((option) => <option key={option} value={option}>{statusLabels[option]}</option>)}
                     </select>
-                    {lead.status === "perdido" && (
-                      <input name="lost_reason" placeholder="Motivo da perda" className="min-h-10 rounded-lg border border-slate-200 px-2 text-xs font-bold" />
-                    )}
                     <button className="flex min-h-10 w-full items-center justify-center rounded-lg bg-[#031A4A] text-xs font-black text-white">
                       Salvar status
                     </button>

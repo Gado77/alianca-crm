@@ -24,7 +24,7 @@ export type LeadSourceDb =
   | "outro";
 
 export const statusLabels: Record<LeadStatusDb, string> = {
-  novo_lead: "Novo Lead",
+  novo_lead: "Novo cliente",
   aguardando_simulacao: "Aguardando Simulação",
   simulacao_realizada: "Simulação Realizada",
   aguardando_cliente: "Aguardando Cliente",
@@ -73,7 +73,7 @@ export const followUpLabels: Record<FollowUpStatusDb, string> = {
 export const followUpPriorityLabels: Record<string, string> = {
   urgente: "Urgente: falar hoje",
   alta: "Alta: resolver em poucos dias",
-  media: "Media: acompanhar no prazo",
+  media: "Média: acompanhar no prazo",
   baixa: "Baixa: lembrar mais pra frente",
 };
 
@@ -81,7 +81,7 @@ export const pipelineStatuses = Object.keys(statusLabels) as LeadStatusDb[];
 
 export const denialReturnDays: Record<string, number | null> = {
   "Score baixo": 60,
-  "Cliente inelegivel": 180,
+  "Cliente inelegível": 180,
   "Sem entrada": 15,
   "Nome restrito": 60,
   "Aguardando salário": 7,
