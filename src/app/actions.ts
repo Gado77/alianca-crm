@@ -380,8 +380,8 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
   if (!file.type.startsWith("image/")) {
     return fichaErrorState("Envie uma imagem JPG, PNG ou WEBP.");
   }
-  if (file.size > 6 * 1024 * 1024) {
-    return fichaErrorState("A imagem precisa ter ate 6 MB.");
+  if (file.size > 3 * 1024 * 1024) {
+    return fichaErrorState("A imagem precisa ter ate 3 MB.");
   }
 
   try {

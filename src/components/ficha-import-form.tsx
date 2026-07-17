@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useMemo, useRef, useState } from "react";
 import { Camera, FileScan, RotateCcw } from "lucide-react";
 import { createLeadFormAction, extractFichaAction, type FichaImportState } from "@/app/actions";
 import { SubmitButton } from "@/components/form-status";
@@ -16,22 +16,42 @@ export function FichaImportForm({ profile, profiles }: { profile?: ProfileRow | 
   const [state, action, pending] = useActionState(extractFichaAction, initialState);
   const [imageUrl, setImageUrl] = useState("");
   const [localError, setLocalError] = useState("");
+  const [preparing, setPreparing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const extracted = state.extracted;
   const previewStyle = useMemo(() => ({ backgroundImage: imageUrl ? `url(${imageUrl})` : undefined }), [imageUrl]);
 
-  function handlePreview(file?: File) {
+  async function handlePreview(file?: File) {
     if (!file) return;
     if (!file.type.startsWith("image/")) {
       setLocalError("Envie uma imagem JPG, PNG ou WEBP.");
       return;
     }
-    if (file.size > 6 * 1024 * 1024) {
-      setLocalError("A foto ficou grande demais. Tire outra foto mais leve ou reduza para ate 6 MB.");
-      return;
-    }
+
+    setPreparing(true);
     setLocalError("");
-    if (imageUrl) URL.revokeObjectURL(imageUrl);
-    setImageUrl(URL.createObjectURL(file));
+    try {
+      const compressed = await compressFichaImage(file);
+      if (compressed.size > 3 * 1024 * 1024) {
+        setLocalError("A foto ainda ficou grande. Tire outra foto mais leve, de preferencia abaixo de 3 MB.");
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+
+      if (fileInputRef.current) {
+        const transfer = new DataTransfer();
+        transfer.items.add(compressed);
+        fileInputRef.current.files = transfer.files;
+      }
+
+      if (imageUrl) URL.revokeObjectURL(imageUrl);
+      setImageUrl(URL.createObjectURL(compressed));
+    } catch (error) {
+      console.error("compressFichaImage", error instanceof Error ? error.message : "unknown");
+      setLocalError("Nao consegui preparar a imagem. Tente outra foto.");
+    } finally {
+      setPreparing(false);
+    }
   }
 
   function reset() {
@@ -57,11 +77,12 @@ export function FichaImportForm({ profile, profiles }: { profile?: ProfileRow | 
             <span className="text-xs font-bold text-slate-500">JPG, PNG ou WEBP. Use foto legivel e sem cortes nos campos.</span>
             <input
               name="ficha"
+              ref={fileInputRef}
               type="file"
               accept="image/*"
               capture="environment"
               required
-              disabled={pending}
+              disabled={pending || preparing}
               className="sr-only"
               onChange={(event) => handlePreview(event.target.files?.[0])}
             />
@@ -74,11 +95,11 @@ export function FichaImportForm({ profile, profiles }: { profile?: ProfileRow | 
           )}
           <button
             type="submit"
-            disabled={pending || Boolean(localError)}
+            disabled={pending || preparing || Boolean(localError)}
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#031A4A] px-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
             <FileScan className="h-4 w-4" />
-            {pending ? "Lendo com IA..." : "Ler ficha com IA"}
+            {preparing ? "Preparando foto..." : pending ? "Lendo com IA..." : "Ler ficha com IA"}
           </button>
         </form>
       </section>
@@ -125,6 +146,43 @@ export function FichaImportForm({ profile, profiles }: { profile?: ProfileRow | 
       )}
     </div>
   );
+}
+
+async function compressFichaImage(file: File) {
+  const dataUrl = await readFileAsDataUrl(file);
+  const image = await loadImage(dataUrl);
+  const maxSide = 1600;
+  const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+  const width = Math.max(1, Math.round(image.width * scale));
+  const height = Math.max(1, Math.round(image.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Canvas unavailable.");
+  context.drawImage(image, 0, 0, width, height);
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error("Image compression failed.")), "image/jpeg", 0.78);
+  });
+  return new File([blob], "ficha-importada.jpg", { type: "image/jpeg" });
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Could not read file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Could not load image."));
+    image.src = src;
+  });
 }
 
 function ReviewForm({
