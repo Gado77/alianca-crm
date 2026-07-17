@@ -202,22 +202,28 @@ function configuredGeminiModel(configuredModel: string) {
 }
 
 async function listGeminiModels(apiKey: string) {
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`, {
-    method: "GET",
-    headers: { "Content-Type": "application/json" },
-  });
-  if (!response.ok) {
-    const detail = await response.text();
-    console.error("listGeminiModels", { status: response.status, detail: detail.slice(0, 500) });
-    return { ok: false as const, models: [], message: geminiErrorMessage(response.status, detail) };
+  const endpointVersions = ["v1", "v1beta"];
+  const errors: string[] = [];
+  for (const version of endpointVersions) {
+    const response = await fetch(`https://generativelanguage.googleapis.com/${version}/models?key=${apiKey}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!response.ok) {
+      const detail = await response.text();
+      errors.push(`${version}: ${response.status}`);
+      console.error("listGeminiModels", { version, status: response.status, detail: detail.slice(0, 500) });
+      continue;
+    }
+    const payload = await response.json();
+    const models = Array.isArray(payload.models) ? payload.models : [];
+    const names = models
+      .filter((item: { supportedGenerationMethods?: string[] }) => item.supportedGenerationMethods?.includes("generateContent"))
+      .map((item: { name?: string }) => item.name?.replace(/^models\//, ""))
+      .filter((name: unknown): name is string => typeof name === "string" && name.length > 0);
+    if (names.length > 0) return { ok: true as const, version, models: names, message: "" };
   }
-  const payload = await response.json();
-  const models = Array.isArray(payload.models) ? payload.models : [];
-  const names = models
-    .filter((item: { supportedGenerationMethods?: string[] }) => item.supportedGenerationMethods?.includes("generateContent"))
-    .map((item: { name?: string }) => item.name?.replace(/^models\//, ""))
-    .filter((name: unknown): name is string => typeof name === "string" && name.length > 0);
-  return { ok: true as const, models: names, message: "" };
+  return { ok: false as const, version: "", models: [], message: `A chave Gemini nao listou modelos disponiveis. Retornos: ${errors.join(", ") || "sem detalhes"}.` };
 }
 
 function chooseGeminiModel(configuredModel: string, availableModels: string[]) {
@@ -433,7 +439,7 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
     let response: Response | null = null;
     let responseText = "";
     const usedModel = selectedModel;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(usedModel)}:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/${availableModels.version}/models/${encodeURIComponent(usedModel)}:generateContent?key=${apiKey}`;
     response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -460,10 +466,13 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
       const detail = responseText || await response.text();
       console.error("extractFichaAction.gemini", {
         status: response.status,
+        version: availableModels.version,
         model: usedModel,
+        availableModels: availableModels.models.slice(0, 12),
         detail: detail.slice(0, 500),
       });
-      return fichaErrorState(geminiErrorMessage(response.status, detail));
+      const suffix = response.status === 404 ? ` Modelos listados: ${availableModels.models.slice(0, 5).join(", ") || "nenhum"}.` : "";
+      return fichaErrorState(`${geminiErrorMessage(response.status, detail)}${suffix}`);
     }
 
     const payload = await response.json();
@@ -472,7 +481,7 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
 
     return {
       ok: true,
-      message: `Ficha lida pela IA (${usedModel}). Confira tudo antes de salvar.`,
+      message: `Ficha lida pela IA (${availableModels.version}/${usedModel}). Confira tudo antes de salvar.`,
       extracted: normalizeFichaLead(JSON.parse(extractJsonText(text))),
     };
   } catch (error) {
