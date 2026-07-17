@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { CrmAssistant } from "@/components/crm-assistant";
 import { getAppContext, getLeadCollections } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,7 @@ export default async function CrmLayout({ children }: { children: React.ReactNod
   return (
     <AppShell profile={profile} pendingCount={pendingCount}>
       {children}
+      <CrmAssistant />
     </AppShell>
   );
 }

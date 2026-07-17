@@ -6,6 +6,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient, getCurrentSessionProfile } from "@/lib/supabase/server";
 import { bankSchema, followUpSchema, leadCreateSchema, leadUpdateSchema, loginSchema, sellerSchema, simulationSchema } from "@/lib/validations";
 import { calculateServerOpportunityScore, onlyDigits } from "@/lib/crm";
+import { assistantPriorities, assistantStatuses, type AssistantPlan, type AssistantPlanAction } from "@/lib/assistant";
 
 export type ActionState = {
   ok: boolean;
@@ -391,6 +392,89 @@ export async function addNoteAction(_prev: ActionState, formData: FormData): Pro
   return { ok: true, message: "Observação criada." };
 }
 
+export async function executeAssistantPlanAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const { supabase, user } = await requireActiveProfile();
+  const rawPlan = String(formData.get("plan") || "");
+  let plan: AssistantPlan;
+  try {
+    plan = JSON.parse(rawPlan) as AssistantPlan;
+  } catch {
+    return errorState("Plano do assistente inválido.");
+  }
+
+  const leadId = plan.lead?.id;
+  if (!leadId) return errorState("Selecione um cliente antes de confirmar.");
+
+  const { data: lead, error: leadError } = await supabase
+    .from("leads")
+    .select("id,assigned_user_id")
+    .eq("id", leadId)
+    .maybeSingle();
+  if (leadError || !lead) return errorState("Cliente não encontrado ou sem permissão.");
+
+  const actions = (plan.actions || []).slice(0, 4);
+  if (!actions.length) return errorState("O assistente não montou nenhuma ação para salvar.");
+
+  for (const action of actions) {
+    const result = await executeAssistantAction({
+      supabase,
+      userId: user.id,
+      assignedUserId: lead.assigned_user_id || user.id,
+      leadId,
+      action,
+    });
+    if (!result.ok) return result;
+  }
+
+  revalidatePath("/", "layout");
+  revalidatePath(`/leads/${leadId}`);
+  return { ok: true, message: "Assistente salvou as ações confirmadas." };
+}
+
+async function executeAssistantAction(input: {
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
+  userId: string;
+  assignedUserId: string;
+  leadId: string;
+  action: AssistantPlanAction;
+}): Promise<ActionState> {
+  if (input.action.type === "note") {
+    const content = input.action.content?.trim();
+    if (!content) return { ok: true, message: "" };
+    const { error } = await input.supabase.from("lead_notes").insert({
+      lead_id: input.leadId,
+      author_id: input.userId,
+      content,
+    });
+    return error ? errorState("Não foi possível salvar a observação.") : { ok: true, message: "" };
+  }
+
+  if (input.action.type === "follow_up") {
+    const priority = assistantPriorities.includes(input.action.priority) ? input.action.priority : "media";
+    const dueAt = new Date(input.action.due_at);
+    const { error } = await input.supabase.from("follow_ups").insert({
+      lead_id: input.leadId,
+      assigned_user_id: input.assignedUserId,
+      reason: input.action.reason || input.action.title || "Retorno criado pelo assistente",
+      due_at: Number.isFinite(dueAt.getTime()) ? dueAt.toISOString() : new Date(Date.now() + 86400000).toISOString(),
+      priority,
+    });
+    return error ? errorState("Não foi possível criar o lembrete.") : { ok: true, message: "" };
+  }
+
+  if (input.action.type === "status") {
+    const status = assistantStatuses.includes(input.action.status) ? input.action.status : null;
+    if (!status) return { ok: true, message: "" };
+    const { error } = await input.supabase
+      .from("leads")
+      .update({ status, lost_reason: status === "perdido" ? input.action.lost_reason || "Marcado pelo assistente" : null })
+      .eq("id", input.leadId);
+    return error ? errorState("Não foi possível atualizar o status.") : { ok: true, message: "" };
+  }
+
+  return { ok: true, message: "" };
+}
+
 export async function registerWhatsappAction(formData: FormData) {
   const { supabase } = await requireActiveProfile();
   const leadId = String(formData.get("lead_id"));
@@ -522,6 +606,10 @@ export async function createSimulationFormAction(formData: FormData) {
 
 export async function addNoteFormAction(formData: FormData) {
   await addNoteAction({ ok: false, message: "" }, formData);
+}
+
+export async function executeAssistantPlanFormAction(formData: FormData) {
+  await executeAssistantPlanAction({ ok: false, message: "" }, formData);
 }
 
 export async function saveBankFormAction(formData: FormData) {
