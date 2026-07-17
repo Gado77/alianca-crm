@@ -403,7 +403,6 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
       ...baseBody,
       generationConfig: {
         temperature: 0,
-        responseMimeType: "application/json",
       },
     };
 
