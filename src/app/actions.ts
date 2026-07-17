@@ -35,6 +35,67 @@ function formatDateForNote(value: string) {
   return `${match[3]}/${match[2]}/${match[1]}`;
 }
 
+function formString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function formNumber(value: unknown) {
+  const raw = formString(value).replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".");
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+async function getUninformedBankId() {
+  const admin = createSupabaseAdminClient();
+  const { data: existing } = await admin
+    .from("banks")
+    .select("id")
+    .eq("name", "Banco não informado")
+    .maybeSingle();
+  if (existing?.id) return existing.id as string;
+
+  const { data, error } = await admin
+    .from("banks")
+    .insert({ name: "Banco não informado", active: false })
+    .select("id")
+    .single();
+  if (error || !data) throw new Error(error?.message || "Unable to create uninformed bank.");
+  return data.id as string;
+}
+
+async function createSimulationFromFicha(input: {
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
+  userId: string;
+  leadId: string;
+  raw: Record<string, FormDataEntryValue>;
+}) {
+  const result = formString(input.raw.simulation_result);
+  if (!["pendente", "aprovado", "negado"].includes(result)) return;
+
+  const denialReason = formString(input.raw.simulation_denial_reason);
+  const notes = formString(input.raw.simulation_notes);
+  const bankResponse = notes || (result === "aprovado" ? "Simulação aprovada conforme ficha." : "");
+  const simulationDate = formString(input.raw.simulation_date) || new Date().toISOString().slice(0, 10);
+  const bankId = await getUninformedBankId();
+
+  const { error } = await input.supabase.from("simulations").insert({
+    lead_id: input.leadId,
+    created_by: input.userId,
+    bank_id: bankId,
+    result,
+    simulation_date: simulationDate,
+    denial_reason: result === "negado" ? denialReason || "Simulação negada conforme ficha" : null,
+    bank_response: bankResponse || null,
+    installment_count: formNumber(input.raw.installment_count),
+    installment_value: formNumber(input.raw.installment_value),
+    notes: notes || "Simulação importada da ficha.",
+  });
+  if (error) throw new Error(error.message);
+
+  const status = result === "aprovado" ? "aprovado" : result === "pendente" ? "aguardando_simulacao" : "simulacao_realizada";
+  await input.supabase.from("leads").update({ status }).eq("id", input.leadId);
+}
+
 async function requireActiveProfile() {
   const context = await getCurrentSessionProfile();
   if (!context.user || !context.profile?.active) {
@@ -168,6 +229,13 @@ export async function createLeadAction(_prev: ActionState, formData: FormData): 
   }
 
   if (interestError) return errorState(interestError.message);
+
+  try {
+    await createSimulationFromFicha({ supabase, userId: user.id, leadId: lead.id, raw });
+  } catch (error) {
+    console.error("createSimulationFromFicha", error instanceof Error ? error.message : "unknown");
+    return errorState("Lead criado, mas não foi possível registrar a simulação lida na ficha.");
+  }
 
   revalidatePath("/", "layout");
   redirect(`/leads/${lead.id}`);

@@ -33,6 +33,7 @@ Aplicar nesta ordem:
 supabase/migrations/20260715120000_persistence_auth_permissions_audit.sql
 supabase/migrations/20260715183000_contact_completed_timeline.sql
 supabase/migrations/20260715190000_remove_other_bank_seed.sql
+supabase/migrations/20260717120000_smarter_simulation_followups.sql
 ```
 
 ## 5. Metodo A - Supabase SQL Editor

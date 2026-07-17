@@ -6,7 +6,7 @@ import { LeadEditPanel, LeadStatusForm, SimulationForm } from "@/components/lead
 import { LeadTabs } from "@/components/lead-tabs";
 import { WhatsappButton } from "@/components/whatsapp-button";
 import { getAppContext, getLeadById } from "@/lib/data";
-import { formatCurrency, formatDateTime, resultLabels, statusLabels, whatsappMessage, whatsappUrl } from "@/lib/crm";
+import { followUpPriorityLabels, formatCurrency, formatDateTime, resultLabels, statusLabels, whatsappMessage, whatsappUrl } from "@/lib/crm";
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const routeParams = await params;
@@ -133,19 +133,27 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             <Card title="Alterar status">
               <LeadStatusForm leadId={lead.id} currentStatus={lead.status} isAdmin={profile?.role === "admin"} />
             </Card>
-            <Card title="Criar retorno">
+            <Card title="Criar lembrete de retorno">
               <form action={createFollowUpFormAction} className="grid gap-3">
+                <p className="rounded-lg bg-slate-50 p-3 text-xs font-bold text-slate-600">
+                  Retorno e um lembrete para voce falar com o cliente depois: ligar, chamar no WhatsApp, pedir documento ou tentar nova simulacao.
+                </p>
                 <input type="hidden" name="lead_id" value={lead.id} />
                 <input type="hidden" name="assigned_user_id" value={lead.assigned_user_id || profile?.id} />
-                <input name="reason" placeholder="Motivo do retorno" className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold" required />
+                <select name="reason" className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold" required>
+                  <option value="">O que precisa fazer?</option>
+                  <option value="Chamar no WhatsApp para continuar atendimento">Chamar no WhatsApp</option>
+                  <option value="Ligar para o cliente">Ligar para o cliente</option>
+                  <option value="Tentar nova simulacao">Tentar nova simulacao</option>
+                  <option value="Cobrar documentos pendentes">Cobrar documentos</option>
+                  <option value="Confirmar vinda na loja">Confirmar vinda na loja</option>
+                  <option value="Ver se ainda tem interesse na moto">Ver se ainda tem interesse</option>
+                </select>
                 <input type="datetime-local" name="due_at" className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold" required />
                 <select name="priority" className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold">
-                  <option value="media">Média</option>
-                  <option value="alta">Alta</option>
-                  <option value="urgente">Urgente</option>
-                  <option value="baixa">Baixa</option>
+                  {Object.entries(followUpPriorityLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
-                <SubmitButton>Criar retorno</SubmitButton>
+                <SubmitButton>Criar lembrete</SubmitButton>
               </form>
             </Card>
             <Card title="Nova observação">

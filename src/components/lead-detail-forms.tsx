@@ -119,7 +119,7 @@ export function SimulationForm({ leadId, banks }: { leadId: string; banks: Bank[
         </select>
       )}
       <p className="rounded-lg bg-orange-50 p-3 text-xs font-bold text-orange-800">
-        Prazos sugeridos: Score baixo 60 dias, Sem entrada 15 dias, Aguardando salário 7 dias. São sugestões comerciais e não garantem aprovação.
+        Se registrar negativa, o sistema cria lembrete de retorno sozinho: score baixo em 60 dias, cliente inelegivel em 6 meses, sem entrada em 15 dias e salario em 7 dias.
       </p>
       <div className="grid gap-3 md:grid-cols-2">
         <input name="proposed_down_payment" placeholder="Entrada proposta (opcional)" type="number" className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold" />

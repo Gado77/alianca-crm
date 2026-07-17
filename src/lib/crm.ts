@@ -70,10 +70,18 @@ export const followUpLabels: Record<FollowUpStatusDb, string> = {
   cancelado: "Cancelado",
 };
 
+export const followUpPriorityLabels: Record<string, string> = {
+  urgente: "Urgente: falar hoje",
+  alta: "Alta: resolver em poucos dias",
+  media: "Media: acompanhar no prazo",
+  baixa: "Baixa: lembrar mais pra frente",
+};
+
 export const pipelineStatuses = Object.keys(statusLabels) as LeadStatusDb[];
 
 export const denialReturnDays: Record<string, number | null> = {
   "Score baixo": 60,
+  "Cliente inelegivel": 180,
   "Sem entrada": 15,
   "Nome restrito": 60,
   "Aguardando salário": 7,

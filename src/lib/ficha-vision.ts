@@ -14,6 +14,12 @@ export type FichaExtractedLead = {
   intended_down_payment: number | "";
   payment_method: "financiamento" | "cartao" | "a_vista" | "consorcio" | "outro";
   other_payment_method: string;
+  simulation_result: "none" | "pendente" | "aprovado" | "negado";
+  simulation_date: string;
+  simulation_denial_reason: string;
+  simulation_notes: string;
+  installment_count: number | "";
+  installment_value: number | "";
   notes: string;
 };
 
@@ -112,6 +118,12 @@ function normalizeFichaLead(raw: Record<string, unknown>): FichaExtractedLead {
     intended_down_payment: normalizeFichaMoney(raw.intended_down_payment),
     payment_method: normalizeFichaPayment(stringValue("payment_method")),
     other_payment_method: stringValue("other_payment_method"),
+    simulation_result: normalizeFichaSimulationResult(stringValue("simulation_result"), raw),
+    simulation_date: normalizeFichaDate(stringValue("simulation_date")) || normalizeFichaDate(stringValue("registration_date")),
+    simulation_denial_reason: normalizeFichaDenialReason(stringValue("simulation_denial_reason"), stringValue("simulation_notes")),
+    simulation_notes: stringValue("simulation_notes"),
+    installment_count: normalizeFichaInteger(raw.installment_count),
+    installment_value: normalizeFichaMoney(raw.installment_value),
     notes: normalizeFichaNotes(raw),
   };
 }
@@ -160,12 +172,46 @@ function normalizeFichaPayment(value: string): FichaExtractedLead["payment_metho
   return "financiamento";
 }
 
+function normalizeFichaSimulationResult(value: string, raw: Record<string, unknown>): FichaExtractedLead["simulation_result"] {
+  const haystack = [
+    value,
+    stringValue(raw.simulation_denial_reason),
+    stringValue(raw.simulation_notes),
+    stringValue(raw.notes),
+    stringValue(raw.loose_notes),
+  ].join(" ").toLowerCase();
+  if (!haystack.trim()) return "none";
+  if (haystack.includes("aprov")) return "aprovado";
+  if (haystack.includes("pend")) return "pendente";
+  if (haystack.includes("neg") || haystack.includes("recus") || haystack.includes("ineleg") || haystack.includes("score") || haystack.includes("restri")) {
+    return "negado";
+  }
+  return value === "pendente" || value === "aprovado" || value === "negado" ? value : "none";
+}
+
+function normalizeFichaDenialReason(reason: string, notes: string) {
+  const value = `${reason} ${notes}`.toLowerCase();
+  if (value.includes("ineleg")) return "Cliente inelegivel";
+  if (value.includes("score")) return "Score baixo";
+  if (value.includes("restri") || value.includes("dívida") || value.includes("divida")) return "Nome restrito";
+  if (value.includes("entrada")) return "Sem entrada";
+  if (value.includes("sal")) return "Aguardando salario";
+  return reason;
+}
+
 function normalizeFichaMoney(value: unknown): number | "" {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value !== "string") return "";
   const digits = value.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".");
   const parsed = Number(digits);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : "";
+}
+
+function normalizeFichaInteger(value: unknown): number | "" {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) return value;
+  if (typeof value !== "string") return "";
+  const parsed = Number(onlyDigits(value));
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : "";
 }
 
 function normalizeFichaModel(value: string) {
@@ -199,8 +245,11 @@ function fichaPrompt() {
     "CNH: se a caixa SIM ou categoria nao estiver claramente marcada, retorne license_category como nao_possui. Se a caixa NAO estiver marcada, tambem retorne nao_possui.",
     "Cidade: se a ficha tiver Localizacao impressa como Sao Jose do Piaui, use city como Sao Jose do Piaui. Se houver nome de interior/povoado/comunidade escrito em Cidade/Estado ou em outro lugar, coloque esse nome em location_detail.",
     "Observacoes: capture qualquer anotacao solta no papel, mesmo fora do campo Observacoes, como parcelas, condicoes, entrada, '10x784' ou recados, em loose_notes.",
+    "Situacao da simulacao: se houver campo/caixa marcado como financiamento aprovado, cliente nao elegivel, proposta recusada, pendente, score baixo ou anotacao de simulacao nas observacoes, extraia para simulation_result, simulation_denial_reason e simulation_notes.",
+    "Se a simulacao estiver aprovada, simulation_result deve ser aprovado. Se cliente nao elegivel, proposta recusada, score baixo ou nome restrito, simulation_result deve ser negado. Se nao houver simulacao na ficha, use simulation_result none.",
+    "Se houver parcela anotada como 10x784, coloque installment_count 10 e installment_value 784, e tambem preserve a anotacao em loose_notes.",
     "Data do cadastro deve ir em registration_date no formato AAAA-MM-DD quando existir.",
-    "Retorne somente JSON valido com as chaves: full_name, cpf, phone, city, location_detail, email, birth_date, registration_date, license_category, motorcycle_model, desired_color, intended_down_payment, payment_method, other_payment_method, notes, loose_notes, uncertainty_notes.",
+    "Retorne somente JSON valido com as chaves: full_name, cpf, phone, city, location_detail, email, birth_date, registration_date, license_category, motorcycle_model, desired_color, intended_down_payment, payment_method, other_payment_method, simulation_result, simulation_date, simulation_denial_reason, simulation_notes, installment_count, installment_value, notes, loose_notes, uncertainty_notes.",
     "license_category deve ser a, ab ou nao_possui. payment_method deve ser financiamento, cartao, a_vista, consorcio ou outro.",
   ].join("\n");
 }

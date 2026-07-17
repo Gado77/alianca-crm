@@ -3,7 +3,7 @@ import { cancelFollowUpFormAction, completeFollowUpFormAction, postponeFollowUpF
 import { SubmitButton } from "@/components/form-status";
 import { WhatsappButton } from "@/components/whatsapp-button";
 import { getLeadCollections } from "@/lib/data";
-import { formatDateTime, whatsappMessage, whatsappUrl } from "@/lib/crm";
+import { followUpPriorityLabels, formatDateTime, whatsappMessage, whatsappUrl } from "@/lib/crm";
 import { cn } from "@/lib/utils";
 
 const tabs = [
@@ -36,7 +36,10 @@ export default async function ReturnsPage({ searchParams }: { searchParams?: Pro
     <div className="space-y-5">
       <header>
         <p className="text-xs font-black uppercase tracking-[0.18em] text-orange-600">Retornos</p>
-        <h1 className="mt-1 text-2xl font-black text-[#031A4A] sm:text-3xl">Quem precisa de retorno?</h1>
+        <h1 className="mt-1 text-2xl font-black text-[#031A4A] sm:text-3xl">Quem precisa de contato?</h1>
+        <p className="mt-2 max-w-2xl text-sm font-semibold text-slate-500">
+          Retorno e um lembrete para falar com o cliente no dia certo: WhatsApp, ligacao, documentos ou nova simulacao.
+        </p>
       </header>
 
       <nav className="grid grid-cols-4 rounded-xl bg-white p-1 shadow-sm">
@@ -61,6 +64,7 @@ export default async function ReturnsPage({ searchParams }: { searchParams?: Pro
                   <h2 className="text-lg font-black text-slate-950">{lead.full_name}</h2>
                   <p className="mt-1 text-sm font-semibold text-slate-500">{interest?.motorcycle_model || "Sem modelo"} · {lead.city}</p>
                   <p className="mt-3 text-sm font-bold text-slate-700">{item.reason}</p>
+                  <p className="mt-1 text-xs font-bold text-slate-500">{followUpPriorityLabels[item.priority] || item.priority}</p>
                   <p className="mt-1 text-xs font-black text-orange-700">{days < 0 ? `${Math.abs(days)} dia(s) atrasado` : days === 0 ? "Hoje" : `Faltam ${days} dia(s)`} · {formatDateTime(item.due_at)}</p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2 lg:w-[360px]">

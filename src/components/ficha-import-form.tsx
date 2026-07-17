@@ -228,6 +228,7 @@ function ReviewForm({
   profiles: ProfileRow[];
 }) {
   const [paymentMethod, setPaymentMethod] = useState<string>(extracted.payment_method);
+  const [simulationResult, setSimulationResult] = useState<string>(extracted.simulation_result);
 
   return (
     <form action={createLeadFormAction} className="grid gap-3">
@@ -268,6 +269,44 @@ function ReviewForm({
         </label>
       </div>
       {paymentMethod === "outro" && <Field name="other_payment_method" label="Qual forma de pagamento?" defaultValue={extracted.other_payment_method} />}
+      <section className="rounded-lg border border-orange-100 bg-orange-50 p-3">
+        <h3 className="text-sm font-black text-orange-900">Simulação lida na ficha</h3>
+        <p className="mt-1 text-xs font-bold text-orange-800">
+          Use quando a ficha já tiver resultado de simulação. Se não teve simulação, deixe como não registrada.
+        </p>
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <label>
+            <span className="mb-2 block text-sm font-black text-slate-700">Situação da simulação</span>
+            <select
+              name="simulation_result"
+              value={simulationResult}
+              onChange={(event) => setSimulationResult(event.target.value)}
+              className="h-12 w-full rounded-lg border border-slate-200 px-3 text-base font-semibold outline-none focus:border-orange-400"
+            >
+              <option value="none">Não registrada na ficha</option>
+              <option value="pendente">Pendente</option>
+              <option value="aprovado">Aprovada</option>
+              <option value="negado">Negada / não elegível</option>
+            </select>
+          </label>
+          <Field name="simulation_date" label="Data da simulação" type="date" defaultValue={extracted.simulation_date} />
+        </div>
+        {simulationResult === "negado" && (
+          <Field name="simulation_denial_reason" label="Motivo da negativa" defaultValue={extracted.simulation_denial_reason} />
+        )}
+        {simulationResult !== "none" && (
+          <>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <Field name="installment_count" label="Qtd. parcelas (opcional)" type="number" defaultValue={extracted.installment_count} />
+              <Field name="installment_value" label="Valor da parcela (opcional)" type="number" defaultValue={extracted.installment_value} />
+            </div>
+            <label className="mt-3 block">
+              <span className="mb-2 block text-sm font-black text-slate-700">Observação da simulação</span>
+              <textarea name="simulation_notes" rows={3} defaultValue={extracted.simulation_notes} className="w-full rounded-lg border border-slate-200 px-3 py-3 text-base font-semibold outline-none focus:border-orange-400" />
+            </label>
+          </>
+        )}
+      </section>
       <input type="hidden" name="source" value="manual" />
       {profile?.role === "admin" && profiles.length > 1 && (
         <Select name="assigned_user_id" label="Responsavel" defaultValue="">
