@@ -180,7 +180,7 @@ function normalizeImageMimeType(type: string) {
 }
 
 async function listGeminiModels(apiKey: string) {
-  const endpointVersions = ["v1", "v1beta"];
+  const endpointVersions = ["v1beta", "v1"];
   const errors: string[] = [];
   for (const version of endpointVersions) {
     const response = await fetch(`https://generativelanguage.googleapis.com/${version}/models?key=${apiKey}`, {
@@ -215,6 +215,10 @@ function chooseGeminiModel(configuredModel: string, availableModels: string[]) {
     "gemini-flash-latest",
   ];
   return preferred.find((name) => availableModels.includes(name)) || availableModels.find((name) => /flash/i.test(name)) || availableModels[0] || configured;
+}
+
+function geminiEndpointVersions(preferredVersion: string) {
+  return Array.from(new Set([preferredVersion, "v1beta", "v1"].filter(Boolean)));
 }
 
 async function requireActiveProfile() {
@@ -409,15 +413,21 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
     let response: Response | null = null;
     let responseText = "";
     const usedModel = selectedModel;
-    const url = `https://generativelanguage.googleapis.com/${availableModels.version}/models/${encodeURIComponent(usedModel)}:generateContent?key=${apiKey}`;
-    response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
+    let usedVersion = availableModels.version;
+    for (const endpointVersion of geminiEndpointVersions(availableModels.version)) {
+      usedVersion = endpointVersion;
+      const url = `https://generativelanguage.googleapis.com/${endpointVersion}/models/${encodeURIComponent(usedModel)}:generateContent?key=${apiKey}`;
+      response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+      if (response.ok) {
+        responseText = "";
+        break;
+      }
       responseText = await response.text();
+      if (response.status !== 404) break;
     }
 
     if (!response) {
@@ -428,7 +438,7 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
       const detail = responseText || await response.text();
       console.error("extractFichaAction.gemini", {
         status: response.status,
-        version: availableModels.version,
+        version: usedVersion,
         model: usedModel,
         availableModels: availableModels.models.slice(0, 12),
         detail: detail.slice(0, 500),
@@ -443,7 +453,7 @@ export async function extractFichaAction(_prev: FichaImportState, formData: Form
 
     return {
       ok: true,
-      message: `Ficha lida pela IA (${availableModels.version}/${usedModel}). Confira tudo antes de salvar.`,
+      message: `Ficha lida pela IA (${usedVersion}/${usedModel}). Confira tudo antes de salvar.`,
       extracted: normalizeFichaLead(JSON.parse(extractJsonText(text))),
     };
   } catch (error) {
