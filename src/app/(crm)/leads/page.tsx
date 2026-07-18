@@ -40,7 +40,7 @@ export default async function LeadsPage({ searchParams }: { searchParams?: Promi
           {profile?.role === "admin" && (
             <Link href="/leads/importar" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-black text-slate-700">
               <FileScan className="h-4 w-4" />
-              Importar ficha — teste
+              Importar ficha
             </Link>
           )}
           <Link href="/leads/novo" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#E84A2A] px-4 text-sm font-black text-white">

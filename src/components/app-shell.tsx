@@ -25,7 +25,7 @@ const adminItems = [
 ];
 
 const adminMobileItems = [
-  { href: "/leads/importar", label: "Importar ficha — teste", icon: FileScan },
+  { href: "/leads/importar", label: "Importar ficha", icon: FileScan },
   ...adminItems,
 ];
 
@@ -159,7 +159,7 @@ function SheetLink({ href, label, icon: Icon, onClick }: { href: string; label: 
 
 function sectionTitle(pathname: string) {
   if (pathname.startsWith("/leads/novo")) return "Novo cliente";
-  if (pathname.startsWith("/leads/importar")) return "Importar ficha — teste";
+  if (pathname.startsWith("/leads/importar")) return "Importar ficha";
   if (pathname.startsWith("/leads/")) return "Cliente";
   if (pathname.startsWith("/leads")) return "Clientes";
   if (pathname.startsWith("/retornos")) return "Retornos";
