@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Building2, CalendarClock, ClipboardCheck, Columns3, House, LogOut, Menu, Plus, Settings, Shield, Users } from "lucide-react";
+import { BarChart3, Building2, CalendarClock, ClipboardCheck, Columns3, FileScan, House, LogOut, Menu, Plus, Shield, Users } from "lucide-react";
 import { logoutAction } from "@/app/actions";
 import type { ProfileRow } from "@/lib/data";
 import { cn } from "@/lib/utils";
@@ -11,7 +11,7 @@ import { useState } from "react";
 
 const primary = [
   { href: "/", label: "Hoje", icon: House },
-  { href: "/leads", label: "Leads", icon: Users },
+  { href: "/leads", label: "Clientes", icon: Users },
   { href: "/retornos", label: "Retornos", icon: CalendarClock },
   { href: "/pipeline", label: "Funil", icon: Columns3 },
 ];
@@ -22,7 +22,11 @@ const adminItems = [
   { href: "/estatisticas", label: "Resumo Mensal", icon: BarChart3 },
   { href: "/usuarios", label: "Equipe", icon: Users },
   { href: "/bancos", label: "Bancos", icon: Building2 },
-  { href: "/configuracoes", label: "Configurações", icon: Settings },
+];
+
+const adminMobileItems = [
+  { href: "/leads/importar", label: "Importar ficha — teste", icon: FileScan },
+  ...adminItems,
 ];
 
 const devItems = [
@@ -80,7 +84,7 @@ export function AppShell({ children, profile, pendingCount }: { children: React.
 
       <Link href="/leads/novo" className="fixed bottom-[calc(78px+env(safe-area-inset-bottom))] right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#E84A2A] text-white shadow-lg lg:hidden">
         <Plus className="h-7 w-7" />
-        <span className="sr-only">Novo Lead</span>
+        <span className="sr-only">Novo cliente</span>
       </Link>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-2 pb-[calc(8px+env(safe-area-inset-bottom))] pt-2 shadow-[0_-12px_30px_rgba(15,23,42,0.08)] backdrop-blur lg:hidden">
@@ -114,7 +118,7 @@ export function AppShell({ children, profile, pendingCount }: { children: React.
                     <Shield className="h-4 w-4" />
                     Administração
                   </div>
-                  {adminItems.map((item) => <SheetLink key={item.href} href={item.href} label={item.label} icon={item.icon} onClick={() => setMoreOpen(false)} />)}
+                  {adminMobileItems.map((item) => <SheetLink key={item.href} href={item.href} label={item.label} icon={item.icon} onClick={() => setMoreOpen(false)} />)}
                   {showHomologation && devItems.map((item) => <SheetLink key={item.href} href={item.href} label={item.label} icon={item.icon} onClick={() => setMoreOpen(false)} />)}
                 </>
               )}
@@ -154,16 +158,15 @@ function SheetLink({ href, label, icon: Icon, onClick }: { href: string; label: 
 }
 
 function sectionTitle(pathname: string) {
-  if (pathname.startsWith("/leads/novo")) return "Novo Lead";
-  if (pathname.startsWith("/leads/importar")) return "Importar ficha";
-  if (pathname.startsWith("/leads/")) return "Lead";
-  if (pathname.startsWith("/leads")) return "Leads";
+  if (pathname.startsWith("/leads/novo")) return "Novo cliente";
+  if (pathname.startsWith("/leads/importar")) return "Importar ficha — teste";
+  if (pathname.startsWith("/leads/")) return "Cliente";
+  if (pathname.startsWith("/leads")) return "Clientes";
   if (pathname.startsWith("/retornos")) return "Retornos";
   if (pathname.startsWith("/pipeline")) return "Funil";
   if (pathname.startsWith("/estatisticas")) return "Resumo Mensal";
   if (pathname.startsWith("/bancos")) return "Bancos";
   if (pathname.startsWith("/usuarios")) return "Equipe";
   if (pathname.startsWith("/homologacao")) return "Homologação";
-  if (pathname.startsWith("/configuracoes")) return "Configurações";
   return "Hoje";
 }

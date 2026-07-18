@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { FileScan, Plus, Search } from "lucide-react";
 import { WhatsappButton } from "@/components/whatsapp-button";
-import { getLeadCollections } from "@/lib/data";
+import { getAppContext, getLeadCollections } from "@/lib/data";
 import { formatDateTime, maskCpf, statusLabels, whatsappMessage, whatsappUrl } from "@/lib/crm";
 
 export default async function LeadsPage({ searchParams }: { searchParams?: Promise<{ q?: string; status?: string }> }) {
   const params = await searchParams;
+  const { profile } = await getAppContext();
   const { leads, interests, followUps } = await getLeadCollections();
   const query = (params?.q || "").toLowerCase();
   const status = params?.status || "todos";
@@ -32,17 +33,19 @@ export default async function LeadsPage({ searchParams }: { searchParams?: Promi
     <div className="space-y-5">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-orange-600">Leads</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-orange-600">Clientes</p>
           <h1 className="mt-1 text-2xl font-black text-[#031A4A] sm:text-3xl">Clientes</h1>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
-          <Link href="/leads/importar" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-black text-slate-700">
-            <FileScan className="h-4 w-4" />
-            Importar Ficha
-          </Link>
+          {profile?.role === "admin" && (
+            <Link href="/leads/importar" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-black text-slate-700">
+              <FileScan className="h-4 w-4" />
+              Importar ficha — teste
+            </Link>
+          )}
           <Link href="/leads/novo" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#E84A2A] px-4 text-sm font-black text-white">
             <Plus className="h-4 w-4" />
-            Novo Lead
+            Novo cliente
           </Link>
         </div>
       </header>

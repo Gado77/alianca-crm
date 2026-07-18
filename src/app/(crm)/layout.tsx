@@ -10,10 +10,11 @@ export default async function CrmLayout({ children }: { children: React.ReactNod
   if (!profile?.active) redirect("/login");
   const { followUps } = await getLeadCollections();
   const pendingCount = followUps.filter((item) => item.status === "pendente").length;
+  const assistantEnabled = process.env.NEXT_PUBLIC_ENABLE_CRM_ASSISTANT === "true";
   return (
     <AppShell profile={profile} pendingCount={pendingCount}>
       {children}
-      <CrmAssistant />
+      {assistantEnabled && <CrmAssistant />}
     </AppShell>
   );
 }

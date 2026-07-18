@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { CalendarClock, Clock3, Plus } from "lucide-react";
-import { completeFollowUpFormAction, postponeFollowUpFormAction } from "@/app/actions";
+import { completeFollowUpFormAction } from "@/app/actions";
 import { SubmitButton } from "@/components/form-status";
+import { PostponeFollowUp } from "@/components/postpone-follow-up";
 import { WhatsappButton } from "@/components/whatsapp-button";
 import { getLeadCollections } from "@/lib/data";
 import { followUpPriorityLabels, formatDateTime, statusLabels, whatsappMessage, whatsappUrl } from "@/lib/crm";
@@ -22,7 +23,6 @@ export default async function TodayPage() {
   const { leads, interests, simulations, followUps, errors } = await getLeadCollections();
   const todayStart = startOfToday();
   const todayEnd = endOfToday();
-  const quickPostponeAt = new Date(todayStart.getTime() + 2 * 86400000).toISOString();
 
   if (errors.length) {
     return <StateCard title="Erro ao carregar dados" description={errors[0]?.message || "Verifique as variáveis de ambiente e RLS."} />;
@@ -38,21 +38,20 @@ export default async function TodayPage() {
   });
   const pendingSimulations = simulations.filter((item) => item.result === "pendente");
   const pendingFollowUpLeadIds = new Set(pendingFollowUps.map((item) => item.lead_id));
-  const activeOpenLeads = leads.filter((lead) => lead.active && !["venda_finalizada", "perdido"].includes(lead.status));
-  const leadsWithoutNextStep = activeOpenLeads.filter((lead) => !pendingFollowUpLeadIds.has(lead.id));
-  const staleLeads = leadsWithoutNextStep.filter((lead) => {
+  const activeOpenLeads = leads.filter((lead) => lead.active && !["venda_finalizada", "perdido", "aguardando_simulacao"].includes(lead.status));
+  const staleLeads = activeOpenLeads.filter((lead) => {
     const lastContact = lead.last_contact_at || lead.created_at;
-    return todayStart.getTime() - new Date(lastContact).getTime() > 7 * 86400000;
+    return !pendingFollowUpLeadIds.has(lead.id) && todayStart.getTime() - new Date(lastContact).getTime() > 7 * 86400000;
   });
 
-  const queue = pendingFollowUps
+  const followUpQueue = pendingFollowUps
     .map((followUp) => {
       const lead = leadById.get(followUp.lead_id);
       const interest = interestByLead.get(followUp.lead_id);
       const due = new Date(followUp.due_at);
       const isOverdue = due < todayStart;
       const isToday = due <= todayEnd;
-      return { followUp, lead, interest, due, isOverdue, isToday };
+      return { kind: "follow_up" as const, followUp, lead, interest, due, isOverdue, isToday };
     })
     .filter((item) => item.lead)
     .sort((a, b) => {
@@ -64,16 +63,33 @@ export default async function TodayPage() {
       return a.due.getTime() - b.due.getTime();
     });
 
+  const simulationQueue = pendingSimulations
+    .map((simulation) => ({
+      kind: "simulation" as const,
+      simulation,
+      lead: leadById.get(simulation.lead_id),
+      interest: interestByLead.get(simulation.lead_id),
+    }))
+    .filter((item) => item.lead);
+
+  const staleQueue = staleLeads.map((lead) => ({
+    kind: "stale" as const,
+    lead,
+    interest: interestByLead.get(lead.id),
+  }));
+
+  const hasItems = followUpQueue.length > 0 || simulationQueue.length > 0 || staleQueue.length > 0;
+
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.18em] text-orange-600">Hoje</p>
-          <h1 className="mt-1 text-2xl font-black tracking-tight text-[#031A4A] sm:text-3xl">Quem precisa da nossa atenção hoje?</h1>
+          <h1 className="mt-1 text-2xl font-black tracking-tight text-[#031A4A] sm:text-3xl">Prioridades de hoje</h1>
         </div>
         <Link href="/leads/novo" className="hidden min-h-11 items-center justify-center gap-2 rounded-lg bg-[#E84A2A] px-4 text-sm font-black text-white sm:inline-flex">
           <Plus className="h-4 w-4" />
-          Novo Lead
+          Novo cliente
         </Link>
       </header>
 
@@ -83,38 +99,19 @@ export default async function TodayPage() {
         <Metric title="Simulações pendentes" value={pendingSimulations.length} />
       </section>
 
-      <section className="grid gap-3 lg:grid-cols-3">
-        <SmartCard
-          title="Clientes sem próximo passo"
-          value={leadsWithoutNextStep.length}
-          description="Clientes abertos sem lembrete de contato. Vale revisar para ninguém esfriar."
-          href="/leads?status=sem_retorno"
-        />
-        <SmartCard
-          title="Parados há mais de 7 dias"
-          value={staleLeads.length}
-          description="Clientes sem contato recente e sem lembrete. Boa fila para recuperar oportunidade."
-          href="/leads?status=sem_retorno"
-        />
-        <SmartCard
-          title="Simulações aguardando"
-          value={pendingSimulations.length}
-          description="Propostas pendentes que precisam de resposta, cobrança ou atualização."
-          href="/leads?status=aguardando_simulacao"
-        />
-      </section>
-
       <section className="space-y-3">
         <div>
-          <h2 className="text-xl font-black text-[#031A4A]">Prioridades de Hoje</h2>
-          <p className="mt-1 text-sm font-semibold text-slate-500">A fila já está ordenada pelo que vence primeiro.</p>
+          <h2 className="text-xl font-black text-[#031A4A]">O que você precisa fazer hoje</h2>
+          <p className="mt-1 text-sm font-semibold text-slate-500">Fila única: atrasados, retornos de hoje, simulações pendentes e clientes sem contato recente.</p>
         </div>
-        {queue.length === 0 && (
+
+        {!hasItems && (
           <div className="rounded-xl bg-white p-6 text-sm font-semibold text-slate-500 shadow-sm">
-            Nenhum retorno pendente agora.
+            Nenhuma prioridade pendente agora.
           </div>
         )}
-        {queue.map(({ followUp, lead, interest, isOverdue }) => {
+
+        {followUpQueue.map(({ followUp, lead, interest, isOverdue }) => {
           if (!lead) return null;
           const message = whatsappMessage({
             full_name: lead.full_name,
@@ -130,30 +127,66 @@ export default async function TodayPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-lg font-black text-slate-950">{lead.full_name}</h3>
                     <span className={`rounded-full px-2 py-1 text-xs font-black ${isOverdue ? "bg-rose-50 text-rose-700" : "bg-orange-50 text-orange-700"}`}>
-                      {isOverdue ? "Atrasado" : "Hoje"}
+                      {isOverdue ? "Retorno atrasado" : "Retorno hoje"}
                     </span>
                   </div>
                   <p className="mt-1 text-sm font-semibold text-slate-500">{interest?.motorcycle_model || "Sem modelo"} · {lead.city}</p>
                   <div className="mt-3 grid gap-1 text-sm font-bold text-slate-600">
-                    <span>Motivo: {followUp.reason || statusLabels[lead.status as keyof typeof statusLabels]}</span>
-                    <span>Prioridade: {followUpPriorityLabels[followUp.priority] || followUp.priority}</span>
-                    <span>Data: {formatDateTime(followUp.due_at)}</span>
+                    <span>{followUp.reason || statusLabels[lead.status as keyof typeof statusLabels]}</span>
+                    <span>{followUpPriorityLabels[followUp.priority] || followUp.priority}</span>
+                    <span>{formatDateTime(followUp.due_at)}</span>
                   </div>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2 lg:w-[380px]">
                   <WhatsappButton leadId={lead.id} href={whatsappUrl(lead.phone, message)} />
-                  <Link href={`/leads/${lead.id}`} className="flex min-h-10 items-center justify-center rounded-lg border border-slate-200 text-xs font-black">Abrir Lead</Link>
+                  <Link href={`/leads/${lead.id}`} className="flex min-h-10 items-center justify-center rounded-lg border border-slate-200 text-xs font-black">Abrir cliente</Link>
                   <form action={completeFollowUpFormAction}>
                     <input type="hidden" name="id" value={followUp.id} />
                     <input type="hidden" name="completion_notes" value="Concluído pela tela Hoje." />
                     <SubmitButton className="flex min-h-10 w-full items-center justify-center rounded-lg bg-[#031A4A] text-xs font-black text-white">Concluir</SubmitButton>
                   </form>
-                  <form action={postponeFollowUpFormAction}>
-                    <input type="hidden" name="id" value={followUp.id} />
-                    <input type="hidden" name="reason" value={`${followUp.reason || "Retorno"} (adiado)`} />
-                    <input type="hidden" name="due_at" value={quickPostponeAt} />
-                    <SubmitButton className="flex min-h-10 w-full items-center justify-center rounded-lg border border-slate-200 text-xs font-black">Adiar</SubmitButton>
-                  </form>
+                  <PostponeFollowUp id={followUp.id} reason={followUp.reason || "Retorno"} />
+                </div>
+              </div>
+            </article>
+          );
+        })}
+
+        {simulationQueue.map(({ simulation, lead, interest }) => {
+          if (!lead) return null;
+          const message = whatsappMessage({ full_name: lead.full_name, phone: lead.phone, status: lead.status, reason: "Simulação aguardando resposta", model: interest?.motorcycle_model });
+          return (
+            <article key={`simulation-${simulation.id}`} className="rounded-xl bg-white p-4 shadow-sm">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h3 className="text-lg font-black text-slate-950">{lead.full_name}</h3>
+                  <p className="mt-1 text-sm font-semibold text-slate-500">{interest?.motorcycle_model || "Sem modelo"} · {lead.city}</p>
+                  <p className="mt-3 text-sm font-bold text-slate-600">Simulação aguardando resposta</p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 lg:w-[260px]">
+                  <WhatsappButton leadId={lead.id} href={whatsappUrl(lead.phone, message)} />
+                  <Link href={`/leads/${lead.id}`} className="flex min-h-10 items-center justify-center rounded-lg border border-slate-200 text-xs font-black">Abrir cliente</Link>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+
+        {staleQueue.map(({ lead, interest }) => {
+          const lastContact = lead.last_contact_at || lead.created_at;
+          const days = Math.max(1, Math.floor((todayStart.getTime() - new Date(lastContact).getTime()) / 86400000));
+          const message = whatsappMessage({ full_name: lead.full_name, phone: lead.phone, status: lead.status, reason: "Sem contato recente", model: interest?.motorcycle_model });
+          return (
+            <article key={`stale-${lead.id}`} className="rounded-xl bg-white p-4 shadow-sm">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h3 className="text-lg font-black text-slate-950">{lead.full_name}</h3>
+                  <p className="mt-1 text-sm font-semibold text-slate-500">{interest?.motorcycle_model || "Sem modelo"} · {lead.city}</p>
+                  <p className="mt-3 text-sm font-bold text-slate-600">Sem contato há {days} dia(s) e sem retorno marcado</p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 lg:w-[260px]">
+                  <WhatsappButton leadId={lead.id} href={whatsappUrl(lead.phone, message)} />
+                  <Link href={`/leads/${lead.id}`} className="flex min-h-10 items-center justify-center rounded-lg border border-slate-200 text-xs font-black">Abrir cliente</Link>
                 </div>
               </div>
             </article>
@@ -173,19 +206,6 @@ function Metric({ title, value }: { title: string; value: number }) {
       </div>
       <p className="mt-2 text-3xl font-black text-[#031A4A]">{value}</p>
     </article>
-  );
-}
-
-function SmartCard({ title, value, description, href }: { title: string; value: number; description: string; href: string }) {
-  return (
-    <Link href={href} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-orange-200">
-      <p className="text-xs font-black uppercase tracking-wide text-orange-600">Sinal inteligente</p>
-      <div className="mt-2 flex items-start justify-between gap-3">
-        <h2 className="text-base font-black text-[#031A4A]">{title}</h2>
-        <span className="rounded-lg bg-slate-100 px-2 py-1 text-sm font-black text-slate-700">{value}</span>
-      </div>
-      <p className="mt-2 text-sm font-semibold text-slate-500">{description}</p>
-    </Link>
   );
 }
 

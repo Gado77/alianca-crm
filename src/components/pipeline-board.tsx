@@ -67,8 +67,10 @@ export function PipelineBoard({ leads }: { leads: PipelineLead[] }) {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <Link href={`/leads/${lead.id}`} className="block truncate text-sm font-black text-slate-950">{lead.full_name}</Link>
-                      <p className="mt-1 text-xs font-bold text-slate-500">{lead.model || "Sem modelo"} · {lead.city || "-"}</p>
+                      <Link href={`/leads/${lead.id}`} className="block truncate text-sm font-black text-slate-950">
+                        {lead.full_name}
+                      </Link>
+                      <p className="mt-1 text-xs font-bold text-slate-500">{lead.model || "Sem modelo"} - {lead.city || "-"}</p>
                       <p className="mt-1 text-xs font-bold text-slate-500">{lead.seller || "Sem responsável"}</p>
                     </div>
                   </div>
@@ -80,7 +82,11 @@ export function PipelineBoard({ leads }: { leads: PipelineLead[] }) {
                       onChange={(event) => persistStatus(lead.id, event.target.value)}
                       className="min-h-10 rounded-lg border border-slate-200 px-2 text-xs font-bold"
                     >
-                      {pipelineStatuses.map((option) => <option key={option} value={option}>{statusLabels[option]}</option>)}
+                      {pipelineStatuses.map((option) => (
+                        <option key={option} value={option}>
+                          {statusLabels[option]}
+                        </option>
+                      ))}
                     </select>
                     <button className="flex min-h-10 w-full items-center justify-center rounded-lg bg-[#031A4A] text-xs font-black text-white">
                       Salvar status

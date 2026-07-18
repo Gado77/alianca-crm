@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { cancelFollowUpFormAction, completeFollowUpFormAction, postponeFollowUpFormAction } from "@/app/actions";
+import { cancelFollowUpFormAction, completeFollowUpFormAction } from "@/app/actions";
 import { SubmitButton } from "@/components/form-status";
+import { PostponeFollowUp } from "@/components/postpone-follow-up";
 import { WhatsappButton } from "@/components/whatsapp-button";
 import { getLeadCollections } from "@/lib/data";
 import { followUpPriorityLabels, formatDateTime, whatsappMessage, whatsappUrl } from "@/lib/crm";
@@ -69,7 +70,7 @@ export default async function ReturnsPage({ searchParams }: { searchParams?: Pro
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2 lg:w-[360px]">
                   <WhatsappButton leadId={lead.id} href={whatsappUrl(lead.phone, whatsappMessage({ full_name: lead.full_name, phone: lead.phone, status: lead.status, reason: item.reason, model: interest?.motorcycle_model }))} />
-                  <Link href={`/leads/${lead.id}`} className="flex min-h-10 items-center justify-center rounded-lg border border-slate-200 text-xs font-black">Abrir Lead</Link>
+                  <Link href={`/leads/${lead.id}`} className="flex min-h-10 items-center justify-center rounded-lg border border-slate-200 text-xs font-black">Abrir cliente</Link>
                   {item.status !== "concluido" && (
                     <>
                       <form action={completeFollowUpFormAction}>
@@ -77,14 +78,9 @@ export default async function ReturnsPage({ searchParams }: { searchParams?: Pro
                         <input type="hidden" name="completion_notes" value="Concluído pela tela de retornos." />
                         <SubmitButton className="flex min-h-10 w-full items-center justify-center rounded-lg bg-[#031A4A] text-xs font-black text-white">Concluir</SubmitButton>
                       </form>
-                      <details className="rounded-lg border border-slate-200 p-2">
-                        <summary className="cursor-pointer text-center text-xs font-black">Mais</summary>
-                        <form action={postponeFollowUpFormAction} className="mt-2 grid gap-2">
-                          <input type="hidden" name="id" value={item.id} />
-                          <input type="hidden" name="reason" value={`${item.reason} (adiado)`} />
-                          <input type="datetime-local" name="due_at" className="min-h-10 rounded-lg border border-slate-200 px-2 text-xs font-bold" required />
-                          <SubmitButton className="flex min-h-10 w-full items-center justify-center rounded-lg border border-slate-200 text-xs font-black">Adiar</SubmitButton>
-                        </form>
+                      <PostponeFollowUp id={item.id} reason={item.reason || "Retorno"} />
+                      <details className="rounded-lg border border-slate-200 p-2 sm:col-span-2">
+                        <summary className="cursor-pointer text-center text-xs font-black text-slate-500">Mais opções</summary>
                         <form action={cancelFollowUpFormAction} className="mt-2">
                           <input type="hidden" name="id" value={item.id} />
                           <SubmitButton className="flex min-h-10 w-full items-center justify-center rounded-lg bg-rose-50 text-xs font-black text-rose-700">Cancelar</SubmitButton>

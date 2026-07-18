@@ -14,7 +14,7 @@ export function LeadCreatePanel({ profile, profiles, defaultOpen = false }: { pr
     <details open={defaultOpen} className="group rounded-xl bg-white shadow-sm">
       <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 p-4">
         <div>
-          <h1 className="text-xl font-black text-[#031A4A]">Cadastrar lead</h1>
+          <h1 className="text-xl font-black text-[#031A4A]">Cadastrar cliente</h1>
           <p className="mt-1 text-sm font-semibold text-slate-500">Abra somente quando for cadastrar um cliente novo.</p>
         </div>
         <ChevronDown className="h-5 w-5 text-slate-500 transition group-open:rotate-180" />
@@ -68,7 +68,7 @@ export function LeadCreatePanel({ profile, profiles, defaultOpen = false }: { pr
           <input type="checkbox" name="duplicate_confirmed" value="true" />
           Confirmo continuar se houver possível duplicidade
         </label>
-        <SubmitButton>Cadastrar lead</SubmitButton>
+        <SubmitButton>Cadastrar cliente</SubmitButton>
       </form>
     </details>
   );

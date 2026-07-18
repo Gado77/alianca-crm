@@ -9,9 +9,9 @@ export default async function NewLeadPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <header>
-        <p className="text-xs font-black uppercase tracking-[0.18em] text-orange-600">Novo Lead</p>
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-orange-600">Novo cliente</p>
         <h1 className="mt-1 text-2xl font-black text-[#031A4A] sm:text-3xl">Cadastrar cliente</h1>
-        <Link href="/leads" className="mt-2 inline-flex text-sm font-black text-orange-600">Voltar para Leads</Link>
+        <Link href="/leads" className="mt-2 inline-flex text-sm font-black text-orange-600">Voltar para clientes</Link>
       </header>
       <LeadCreatePanel profile={profile} profiles={profiles} defaultOpen />
     </div>

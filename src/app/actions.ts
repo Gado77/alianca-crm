@@ -235,7 +235,7 @@ export async function createLeadAction(_prev: ActionState, formData: FormData): 
     await createSimulationFromFicha({ supabase, userId: user.id, leadId: lead.id, raw });
   } catch (error) {
     console.error("createSimulationFromFicha", error instanceof Error ? error.message : "unknown");
-    return errorState("Lead criado, mas não foi possível registrar a simulação lida na ficha.");
+    return errorState("Cliente criado, mas não foi possível registrar a simulação lida na ficha.");
   }
 
   revalidatePath("/", "layout");

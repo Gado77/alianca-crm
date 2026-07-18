@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { addNoteFormAction, completeFollowUpFormAction, createFollowUpFormAction, markContactCompletedAction, postponeFollowUpFormAction } from "@/app/actions";
+import { addNoteFormAction, completeFollowUpFormAction, createFollowUpFormAction, markContactCompletedAction } from "@/app/actions";
 import { SubmitButton } from "@/components/form-status";
 import { LeadEditPanel, LeadStatusForm, SimulationForm } from "@/components/lead-detail-forms";
 import { LeadTabs } from "@/components/lead-tabs";
+import { PostponeFollowUp } from "@/components/postpone-follow-up";
 import { WhatsappButton } from "@/components/whatsapp-button";
 import { getAppContext, getLeadById } from "@/lib/data";
 import { followUpPriorityLabels, formatCurrency, formatDateTime, resultLabels, statusLabels, whatsappMessage, whatsappUrl } from "@/lib/crm";
@@ -35,7 +36,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       <header className="rounded-xl bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-orange-600">Lead</p>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-orange-600">Cliente</p>
             <h1 className="mt-1 text-2xl font-black text-[#031A4A] sm:text-3xl">{lead.full_name}</h1>
             <p className="mt-1 text-sm font-semibold text-slate-500">{data.interest?.motorcycle_model || "Sem modelo"} · {lead.city}</p>
             <div className="mt-3 flex flex-wrap gap-2 text-xs font-black">
@@ -68,12 +69,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                 <input type="hidden" name="completion_notes" value="Concluído pela página do lead." />
                 <SubmitButton className="flex min-h-10 w-full items-center justify-center rounded-lg bg-[#031A4A] text-xs font-black text-white">Concluir</SubmitButton>
               </form>
-              <form action={postponeFollowUpFormAction}>
-                <input type="hidden" name="id" value={nextFollowUp.id} />
-                <input type="hidden" name="reason" value={`${nextFollowUp.reason} (adiado)`} />
-                <input type="datetime-local" name="due_at" className="min-h-10 rounded-lg border border-slate-200 px-2 text-xs font-bold" required />
-                <SubmitButton className="mt-2 flex min-h-10 w-full items-center justify-center rounded-lg border border-slate-200 text-xs font-black">Adiar</SubmitButton>
-              </form>
+              <PostponeFollowUp id={nextFollowUp.id} reason={nextFollowUp.reason || "Retorno"} />
             </div>
           </div>
         ) : (
@@ -108,9 +104,12 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                 </article>
               ))}
             </div>
-            <div className="mt-4">
-              <SimulationForm leadId={lead.id} banks={data.banks} />
-            </div>
+            <details className="mt-4 rounded-lg border border-slate-200 p-3">
+              <summary className="cursor-pointer text-sm font-black text-[#031A4A]">+ Nova simulação</summary>
+              <div className="mt-3">
+                <SimulationForm leadId={lead.id} banks={data.banks} />
+              </div>
+            </details>
           </Card>
         }
         historico={
@@ -130,10 +129,10 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         mais={
           <div className="space-y-4">
             <LeadEditPanel lead={lead} interest={data.interest} />
-            <Card title="Alterar status">
+            <ExpandableCard title="Alterar status">
               <LeadStatusForm leadId={lead.id} currentStatus={lead.status} isAdmin={profile?.role === "admin"} />
-            </Card>
-            <Card title="Criar lembrete de retorno">
+            </ExpandableCard>
+            <ExpandableCard title="Criar retorno">
               <form action={createFollowUpFormAction} className="grid gap-3">
                 <p className="rounded-lg bg-slate-50 p-3 text-xs font-bold text-slate-600">
                   Retorno e um lembrete para voce falar com o cliente depois: ligar, chamar no WhatsApp, pedir documento ou tentar nova simulacao.
@@ -155,15 +154,15 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                 </select>
                 <SubmitButton>Criar lembrete</SubmitButton>
               </form>
-            </Card>
-            <Card title="Nova observação">
+            </ExpandableCard>
+            <ExpandableCard title="Adicionar observação">
               <form action={addNoteFormAction} className="grid gap-2">
                 <input type="hidden" name="lead_id" value={lead.id} />
                 <textarea name="content" rows={3} placeholder="Adicionar observação" className="rounded-lg border border-slate-200 px-3 py-3 text-sm font-bold" />
                 <SubmitButton>Adicionar observação</SubmitButton>
               </form>
-            </Card>
-            <Link href="/leads" className="flex min-h-11 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-black">Voltar para Leads</Link>
+            </ExpandableCard>
+            <Link href="/leads" className="flex min-h-11 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-black">Voltar para clientes</Link>
           </div>
         }
       />
@@ -177,6 +176,15 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
       <h2 className="mb-4 text-lg font-black text-[#031A4A]">{title}</h2>
       {children}
     </section>
+  );
+}
+
+function ExpandableCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <details className="rounded-xl bg-white p-4 shadow-sm">
+      <summary className="cursor-pointer list-none text-lg font-black text-[#031A4A]">{title}</summary>
+      <div className="mt-4">{children}</div>
+    </details>
   );
 }
 

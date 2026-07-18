@@ -25,12 +25,12 @@ export type LeadSourceDb =
 
 export const statusLabels: Record<LeadStatusDb, string> = {
   novo_lead: "Novo cliente",
-  aguardando_simulacao: "Aguardando Simulação",
-  simulacao_realizada: "Simulação Realizada",
-  aguardando_cliente: "Aguardando Cliente",
+  aguardando_simulacao: "Aguardando simulação",
+  simulacao_realizada: "Simulação realizada",
+  aguardando_cliente: "Aguardando cliente",
   aprovado: "Aprovado",
   documentacao: "Documentação",
-  venda_finalizada: "Venda Finalizada",
+  venda_finalizada: "Venda finalizada",
   perdido: "Perdido",
 };
 
