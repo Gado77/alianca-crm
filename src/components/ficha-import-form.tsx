@@ -113,7 +113,6 @@ export function FichaImportForm({ profile, profiles }: { profile?: ProfileRow | 
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              capture="environment"
               required
               disabled={pending || preparing}
               className="sr-only"
