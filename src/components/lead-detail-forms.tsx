@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { createSimulationFormAction, updateLeadDetailsFormAction, updateLeadStatusFormAction } from "@/app/actions";
+import { createSimulationFormAction, updateLeadDetailsFormAction, updateLeadStatusFormAction, updateSimulationFormAction } from "@/app/actions";
 import { SubmitButton } from "@/components/form-status";
 import { denialReasons, paymentLabels, sourceLabels, statusOptions } from "@/lib/crm";
 
@@ -17,6 +17,7 @@ type Lead = {
   license_category?: string | null;
   source?: string | null;
 };
+
 type Interest = {
   id?: string | null;
   motorcycle_model?: string | null;
@@ -25,7 +26,15 @@ type Interest = {
   payment_method?: string | null;
   other_payment_method?: string | null;
 } | null;
-type Bank = { id: string; name: string; active: boolean };
+
+type Simulation = {
+  id: string;
+  lead_id: string;
+  result: string;
+  simulation_date?: string | null;
+  denial_reason?: string | null;
+  notes?: string | null;
+};
 
 export function LeadEditPanel({ lead, interest }: { lead: Lead; interest: Interest }) {
   const [paymentMethod, setPaymentMethod] = useState(String(interest?.payment_method || "financiamento"));
@@ -93,19 +102,12 @@ export function LeadStatusForm({ leadId, currentStatus, isAdmin }: { leadId: str
   );
 }
 
-export function SimulationForm({ leadId, banks }: { leadId: string; banks: Bank[] }) {
-  const [bankId, setBankId] = useState("");
+export function SimulationForm({ leadId }: { leadId: string; banks?: unknown[] }) {
   const [result, setResult] = useState("pendente");
 
   return (
     <form action={createSimulationFormAction} className="grid gap-3">
       <input type="hidden" name="lead_id" value={leadId} />
-      <select name="bank_id" value={bankId} onChange={(event) => setBankId(event.target.value)} className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold" required>
-        <option value="">Selecione o banco</option>
-        {banks.filter((bank) => bank.active && bank.name !== "Outro").map((bank) => <option key={bank.id} value={bank.id}>{bank.name}</option>)}
-        <option value="other">Outro banco</option>
-      </select>
-      {bankId === "other" && <input name="other_bank_name" placeholder="Nome do banco" className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold" />}
       <input type="date" name="simulation_date" className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold" />
       <select name="result" value={result} onChange={(event) => setResult(event.target.value)} className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold">
         <option value="pendente">Pendente</option>
@@ -119,17 +121,36 @@ export function SimulationForm({ leadId, banks }: { leadId: string; banks: Bank[
         </select>
       )}
       <p className="rounded-lg bg-orange-50 p-3 text-xs font-bold text-orange-800">
-        Se registrar negativa, o sistema cria lembrete de retorno sozinho: score baixo em 60 dias, cliente inelegivel em 6 meses, sem entrada em 15 dias e salario em 7 dias.
+        Se registrar negativa, o sistema cria lembrete sozinho: score baixo em 60 dias, cliente inelegível em 6 meses, sem entrada em 15 dias e salário em 7 dias.
       </p>
-      <div className="grid gap-3 md:grid-cols-2">
-        <input name="proposed_down_payment" placeholder="Entrada proposta (opcional)" type="number" className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold" />
-        <input name="approved_amount" placeholder="Valor aprovado" type="number" className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold" />
-        <input name="installment_count" placeholder="Parcelas" type="number" className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold" />
-        <input name="installment_value" placeholder="Valor parcela" type="number" className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold" />
-      </div>
-      <textarea name="bank_response" placeholder="Resposta do banco" rows={3} className="rounded-lg border border-slate-200 px-3 py-3 text-sm font-bold" />
       <textarea name="notes" placeholder="Observações (opcional)" rows={3} className="rounded-lg border border-slate-200 px-3 py-3 text-sm font-bold" />
       <SubmitButton>Registrar simulação</SubmitButton>
+    </form>
+  );
+}
+
+export function SimulationEditForm({ simulation }: { simulation: Simulation }) {
+  const [result, setResult] = useState(simulation.result || "pendente");
+
+  return (
+    <form action={updateSimulationFormAction} className="grid gap-3">
+      <input type="hidden" name="id" value={simulation.id} />
+      <input type="hidden" name="lead_id" value={simulation.lead_id} />
+      <input type="hidden" name="bank_id" value="" />
+      <input type="date" name="simulation_date" defaultValue={String(simulation.simulation_date || "").slice(0, 10)} className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold" />
+      <select name="result" value={result} onChange={(event) => setResult(event.target.value)} className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold">
+        <option value="pendente">Pendente</option>
+        <option value="aprovado">Aprovado</option>
+        <option value="negado">Negado</option>
+      </select>
+      {result === "negado" && (
+        <select name="denial_reason" defaultValue={simulation.denial_reason || ""} className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold">
+          <option value="">Motivo da negativa</option>
+          {denialReasons.map((reason) => <option key={reason}>{reason}</option>)}
+        </select>
+      )}
+      <textarea name="notes" placeholder="Observações (opcional)" rows={3} defaultValue={simulation.notes || ""} className="rounded-lg border border-slate-200 px-3 py-3 text-sm font-bold" />
+      <SubmitButton>Salvar simulação</SubmitButton>
     </form>
   );
 }

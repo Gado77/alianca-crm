@@ -37,7 +37,7 @@ export const followUpSchema = z.object({
 
 export const simulationSchema = z.object({
   lead_id: z.string().uuid(),
-  bank_id: z.string().uuid().or(z.literal("other")),
+  bank_id: z.string().uuid().optional().or(z.literal("")).or(z.literal("other")),
   other_bank_name: z.string().optional(),
   result: z.enum(["pendente", "aprovado", "negado"]),
   simulation_date: z.string().optional(),
@@ -49,6 +49,10 @@ export const simulationSchema = z.object({
   installment_count: z.coerce.number().optional(),
   installment_value: z.coerce.number().optional(),
   notes: z.string().optional(),
+});
+
+export const simulationUpdateSchema = simulationSchema.extend({
+  id: z.string().uuid(),
 });
 
 export const bankSchema = z.object({

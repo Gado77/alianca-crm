@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient, getCurrentSessionProfile } from "@/lib/supabase/server";
-import { bankSchema, followUpSchema, leadCreateSchema, leadUpdateSchema, loginSchema, sellerSchema, simulationSchema } from "@/lib/validations";
+import { bankSchema, followUpSchema, leadCreateSchema, leadUpdateSchema, loginSchema, sellerSchema, simulationSchema, simulationUpdateSchema } from "@/lib/validations";
 import { calculateServerOpportunityScore, onlyDigits } from "@/lib/crm";
 import { assistantPriorities, assistantStatuses, type AssistantPlan, type AssistantPlanAction } from "@/lib/assistant";
 
@@ -297,6 +297,17 @@ export async function updateLeadStatusAction(formData: FormData) {
   return { ok: true, message: "Status atualizado." };
 }
 
+export async function archiveLeadAction(formData: FormData) {
+  const context = await requireAdmin();
+  if (!context.isAdmin) return errorState("Apenas administrador pode excluir cliente.");
+  const id = String(formData.get("lead_id"));
+  if (String(formData.get("confirm_delete")) !== "true") return errorState("Confirme a exclusão do cliente.");
+  const { error } = await context.supabase.from("leads").update({ active: false }).eq("id", id);
+  if (error) return errorState("Não foi possível excluir o cliente.");
+  revalidatePath("/", "layout");
+  redirect("/leads");
+}
+
 export async function createFollowUpAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const { supabase } = await requireActiveProfile();
   const parsed = followUpSchema.safeParse(formObject(formData));
@@ -350,7 +361,7 @@ export async function createSimulationAction(_prev: ActionState, formData: FormD
   if (parsed.data.result === "negado" && !parsed.data.denial_reason) {
     return errorState("Informe o motivo da negativa.", { denial_reason: ["Motivo obrigatório"] });
   }
-  let bankId = parsed.data.bank_id;
+  let bankId = parsed.data.bank_id || "";
   if (bankId === "other") {
     const bankName = parsed.data.other_bank_name?.trim();
     if (!bankName) return errorState("Informe o nome do banco.");
@@ -361,6 +372,9 @@ export async function createSimulationAction(_prev: ActionState, formData: FormD
       .single();
     if (bankError || !bank) return errorState("Não foi possível cadastrar o banco informado.");
     bankId = bank.id;
+  }
+  if (!bankId) {
+    bankId = await getUninformedBankId();
   }
   const { other_bank_name: _otherBankName, bank_id: _rawBankId, ...simulation } = parsed.data;
   void _otherBankName;
@@ -375,6 +389,44 @@ export async function createSimulationAction(_prev: ActionState, formData: FormD
   revalidatePath("/", "layout");
   revalidatePath(`/leads/${parsed.data.lead_id}`);
   return { ok: true, message: "Simulação registrada." };
+}
+
+export async function updateSimulationAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const context = await requireAdmin();
+  if (!context.isAdmin) return errorState("Apenas administrador pode editar simulação.");
+  const parsed = simulationUpdateSchema.safeParse(formObject(formData));
+  if (!parsed.success) return errorState("Revise a simulação.", parsed.error.flatten().fieldErrors);
+  if (parsed.data.result === "negado" && !parsed.data.denial_reason) {
+    return errorState("Informe o motivo da negativa.", { denial_reason: ["Motivo obrigatório"] });
+  }
+
+  const { error } = await context.supabase
+    .from("simulations")
+    .update({
+      result: parsed.data.result,
+      simulation_date: parsed.data.simulation_date || new Date().toISOString().slice(0, 10),
+      denial_reason: parsed.data.result === "negado" ? parsed.data.denial_reason || null : null,
+      notes: parsed.data.notes || null,
+    })
+    .eq("id", parsed.data.id)
+    .eq("lead_id", parsed.data.lead_id);
+
+  if (error) return errorState("Não foi possível editar a simulação.");
+  revalidatePath("/", "layout");
+  revalidatePath(`/leads/${parsed.data.lead_id}`);
+  return { ok: true, message: "Simulação atualizada." };
+}
+
+export async function deleteSimulationAction(formData: FormData) {
+  const context = await requireAdmin();
+  if (!context.isAdmin) return errorState("Apenas administrador pode excluir simulação.");
+  const id = String(formData.get("id"));
+  const leadId = String(formData.get("lead_id"));
+  const { error } = await context.supabase.from("simulations").delete().eq("id", id).eq("lead_id", leadId);
+  if (error) return errorState("Não foi possível excluir a simulação.");
+  revalidatePath("/", "layout");
+  revalidatePath(`/leads/${leadId}`);
+  return { ok: true, message: "Simulação excluída." };
 }
 
 export async function addNoteAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
@@ -584,6 +636,10 @@ export async function updateLeadStatusFormAction(formData: FormData) {
   await updateLeadStatusAction(formData);
 }
 
+export async function archiveLeadFormAction(formData: FormData) {
+  await archiveLeadAction(formData);
+}
+
 export async function createFollowUpFormAction(formData: FormData) {
   await createFollowUpAction({ ok: false, message: "" }, formData);
 }
@@ -602,6 +658,14 @@ export async function cancelFollowUpFormAction(formData: FormData) {
 
 export async function createSimulationFormAction(formData: FormData) {
   await createSimulationAction({ ok: false, message: "" }, formData);
+}
+
+export async function updateSimulationFormAction(formData: FormData) {
+  await updateSimulationAction({ ok: false, message: "" }, formData);
+}
+
+export async function deleteSimulationFormAction(formData: FormData) {
+  await deleteSimulationAction(formData);
 }
 
 export async function addNoteFormAction(formData: FormData) {
