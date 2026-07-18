@@ -399,10 +399,12 @@ export async function updateSimulationAction(_prev: ActionState, formData: FormD
   if (parsed.data.result === "negado" && !parsed.data.denial_reason) {
     return errorState("Informe o motivo da negativa.", { denial_reason: ["Motivo obrigatório"] });
   }
+  const bankId = parsed.data.bank_id || await getUninformedBankId();
 
   const { error } = await context.supabase
     .from("simulations")
     .update({
+      bank_id: bankId,
       result: parsed.data.result,
       simulation_date: parsed.data.simulation_date || new Date().toISOString().slice(0, 10),
       denial_reason: parsed.data.result === "negado" ? parsed.data.denial_reason || null : null,

@@ -97,7 +97,10 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
               {data.simulations.map((item) => (
                 <article key={item.id} className="rounded-lg bg-slate-50 p-3">
                   <div className="flex justify-between gap-2">
-                    <p className="font-black">{formatDate(item.simulation_date || item.created_at)}</p>
+                    <div>
+                      <p className="font-black">{data.banks.find((bank) => bank.id === item.bank_id)?.name || "Banco não informado"}</p>
+                      <p className="mt-1 text-xs font-bold text-slate-500">{formatDate(item.simulation_date || item.created_at)}</p>
+                    </div>
                     <span className="rounded-md bg-white px-2 py-1 text-xs font-black">{resultLabels[item.result as keyof typeof resultLabels]}</span>
                   </div>
                   <p className="mt-2 text-sm font-semibold text-slate-500">{item.denial_reason || item.notes || "Sem observação"}</p>
@@ -105,7 +108,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                     <details className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
                       <summary className="cursor-pointer text-sm font-black text-[#031A4A]">Editar ou excluir</summary>
                       <div className="mt-3 grid gap-3">
-                        <SimulationEditForm simulation={item} />
+                        <SimulationEditForm simulation={item} banks={data.banks} />
                         <form action={deleteSimulationFormAction}>
                           <input type="hidden" name="id" value={item.id} />
                           <input type="hidden" name="lead_id" value={lead.id} />
@@ -122,7 +125,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             <details className="mt-4 rounded-lg border border-slate-200 p-3">
               <summary className="cursor-pointer text-sm font-black text-[#031A4A]">+ Nova simulação</summary>
               <div className="mt-3">
-                <SimulationForm leadId={lead.id} />
+                <SimulationForm leadId={lead.id} banks={data.banks} />
               </div>
             </details>
           </Card>

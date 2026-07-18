@@ -30,10 +30,17 @@ type Interest = {
 type Simulation = {
   id: string;
   lead_id: string;
+  bank_id?: string | null;
   result: string;
   simulation_date?: string | null;
   denial_reason?: string | null;
   notes?: string | null;
+};
+
+type Bank = {
+  id: string;
+  name: string;
+  active: boolean;
 };
 
 export function LeadEditPanel({ lead, interest }: { lead: Lead; interest: Interest }) {
@@ -102,12 +109,16 @@ export function LeadStatusForm({ leadId, currentStatus, isAdmin }: { leadId: str
   );
 }
 
-export function SimulationForm({ leadId }: { leadId: string; banks?: unknown[] }) {
+export function SimulationForm({ leadId, banks = [] }: { leadId: string; banks?: Bank[] }) {
   const [result, setResult] = useState("pendente");
 
   return (
     <form action={createSimulationFormAction} className="grid gap-3">
       <input type="hidden" name="lead_id" value={leadId} />
+      <select name="bank_id" defaultValue="" className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold">
+        <option value="">Banco não informado</option>
+        {banks.filter((bank) => bank.active && bank.name !== "Outro").map((bank) => <option key={bank.id} value={bank.id}>{bank.name}</option>)}
+      </select>
       <input type="date" name="simulation_date" className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold" />
       <select name="result" value={result} onChange={(event) => setResult(event.target.value)} className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold">
         <option value="pendente">Pendente</option>
@@ -129,14 +140,17 @@ export function SimulationForm({ leadId }: { leadId: string; banks?: unknown[] }
   );
 }
 
-export function SimulationEditForm({ simulation }: { simulation: Simulation }) {
+export function SimulationEditForm({ simulation, banks = [] }: { simulation: Simulation; banks?: Bank[] }) {
   const [result, setResult] = useState(simulation.result || "pendente");
 
   return (
     <form action={updateSimulationFormAction} className="grid gap-3">
       <input type="hidden" name="id" value={simulation.id} />
       <input type="hidden" name="lead_id" value={simulation.lead_id} />
-      <input type="hidden" name="bank_id" value="" />
+      <select name="bank_id" defaultValue={simulation.bank_id || ""} className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold">
+        <option value="">Banco não informado</option>
+        {banks.filter((bank) => bank.active && bank.name !== "Outro").map((bank) => <option key={bank.id} value={bank.id}>{bank.name}</option>)}
+      </select>
       <input type="date" name="simulation_date" defaultValue={String(simulation.simulation_date || "").slice(0, 10)} className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold" />
       <select name="result" value={result} onChange={(event) => setResult(event.target.value)} className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-bold">
         <option value="pendente">Pendente</option>
