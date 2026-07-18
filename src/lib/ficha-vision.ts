@@ -39,7 +39,7 @@ export async function extractFichaWithVision(file: File): Promise<FichaImportSta
 
 async function extractFichaWithGroq(file: File): Promise<FichaImportState> {
   const apiKey = process.env.GROQ_API_KEY;
-  const model = process.env.GROQ_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct";
+  const model = process.env.GROQ_MODEL || "qwen/qwen3.6-27b";
   if (!apiKey) return { ok: false, message: "Configure GROQ_API_KEY no ambiente do servidor para ler fichas por IA." };
   if (!file.type.startsWith("image/")) return { ok: false, message: "Envie uma imagem JPG, PNG ou WEBP." };
   if (file.size > 3 * 1024 * 1024) return { ok: false, message: "A imagem precisa ter ate 3 MB." };
@@ -47,59 +47,80 @@ async function extractFichaWithGroq(file: File): Promise<FichaImportState> {
   try {
     const imageData = Buffer.from(await file.arrayBuffer()).toString("base64");
     const mimeType = normalizeImageMimeType(file.type);
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: fichaPrompt() },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:${mimeType};base64,${imageData}`,
+    const models = groqVisionModels(model);
+    let lastError: { status: number; detail: string; model: string } | null = null;
+
+    for (const currentModel of models) {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: currentModel,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: fichaPrompt() },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: `data:${mimeType};base64,${imageData}`,
+                  },
                 },
-              },
-            ],
-          },
-        ],
-        temperature: 0,
-        max_completion_tokens: 1024,
-        response_format: { type: "json_object" },
-      }),
-    });
-
-    if (!response.ok) {
-      const detail = await response.text();
-      console.error("extractFichaWithGroq", {
-        status: response.status,
-        model,
-        detail: detail.slice(0, 500),
+              ],
+            },
+          ],
+          temperature: 0,
+          max_completion_tokens: 1024,
+          response_format: { type: "json_object" },
+        }),
       });
-      return { ok: false, message: groqErrorMessage(response.status, detail) };
+
+      if (!response.ok) {
+        const detail = await response.text();
+        console.error("extractFichaWithGroq", {
+          status: response.status,
+          model: currentModel,
+          detail: detail.slice(0, 500),
+        });
+        lastError = { status: response.status, detail, model: currentModel };
+        if (response.status === 404) continue;
+        return { ok: false, message: groqErrorMessage(response.status, detail) };
+      }
+
+      const payload = await response.json();
+      const text = payload?.choices?.[0]?.message?.content;
+      if (typeof text !== "string" || !text.trim()) {
+        return { ok: false, message: "A Groq nao retornou dados da ficha. Tente outra foto." };
+      }
+
+      return {
+        ok: true,
+        message: `Ficha lida pela IA Groq (${currentModel}). Confira tudo antes de salvar.`,
+        extracted: normalizeFichaLead(JSON.parse(extractJsonText(text))),
+      };
     }
 
-    const payload = await response.json();
-    const text = payload?.choices?.[0]?.message?.content;
-    if (typeof text !== "string" || !text.trim()) {
-      return { ok: false, message: "A Groq nao retornou dados da ficha. Tente outra foto." };
+    if (lastError) {
+      return { ok: false, message: groqErrorMessage(lastError.status, lastError.detail) };
     }
 
-    return {
-      ok: true,
-      message: `Ficha lida pela IA Groq (${model}). Confira tudo antes de salvar.`,
-      extracted: normalizeFichaLead(JSON.parse(extractJsonText(text))),
-    };
+    return { ok: false, message: "Nenhum modelo Groq ficou disponivel para ler a ficha agora." };
   } catch (error) {
     console.error("extractFichaWithGroq", error instanceof Error ? error.message : "unknown");
     return { ok: false, message: "Nao foi possivel interpretar a ficha. Confira a foto e tente novamente." };
   }
+}
+
+function groqVisionModels(configuredModel: string) {
+  return Array.from(new Set([
+    configuredModel,
+    "qwen/qwen3.6-27b",
+    "meta-llama/llama-4-scout-17b-16e-instruct",
+  ].filter(Boolean)));
 }
 
 function normalizeFichaLead(raw: Record<string, unknown>): FichaExtractedLead {
@@ -258,7 +279,7 @@ function groqErrorMessage(status: number, detail: string) {
   const parsedDetail = providerErrorDetail(detail);
   if (status === 400) return `A Groq recusou a imagem ou a chamada. ${parsedDetail ? `Detalhe: ${parsedDetail}` : "Tente outra foto ou confira GROQ_MODEL na Vercel."}`;
   if (status === 401 || status === 403) return "A chave Groq nao tem permissao para essa chamada. Confira GROQ_API_KEY na Vercel.";
-  if (status === 404) return "Modelo Groq nao encontrado. Use meta-llama/llama-4-scout-17b-16e-instruct.";
+  if (status === 404) return "Modelo Groq nao encontrado. Use qwen/qwen3.6-27b em GROQ_MODEL.";
   if (status === 413) return "A foto ficou grande demais para a Groq. Tente uma imagem mais leve.";
   if (status === 429) return "A Groq bloqueou por limite de uso agora. Aguarde um pouco e tente novamente.";
   if (status >= 500) return "A Groq ficou indisponivel no momento. Tente novamente em instantes.";
