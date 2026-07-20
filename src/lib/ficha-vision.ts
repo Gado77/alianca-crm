@@ -49,6 +49,7 @@ async function extractFichaWithGroq(file: File): Promise<FichaImportState> {
     const mimeType = normalizeImageMimeType(file.type);
     const models = groqVisionModels(model);
     let lastError: { status: number; detail: string; model: string } | null = null;
+    let lastParseError = false;
 
     for (const currentModel of models) {
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -96,15 +97,25 @@ async function extractFichaWithGroq(file: File): Promise<FichaImportState> {
         return { ok: false, message: "A Groq nao retornou dados da ficha. Tente outra foto." };
       }
 
-      return {
-        ok: true,
-        message: `Ficha lida pela IA Groq (${currentModel}). Confira tudo antes de salvar.`,
-        extracted: normalizeFichaLead(parseFichaJson(text)),
-      };
+      try {
+        const parsed = await parseFichaJsonWithRepair({ apiKey, model: currentModel, text });
+        return {
+          ok: true,
+          message: `Ficha lida pela IA Groq (${currentModel}). Confira tudo antes de salvar.`,
+          extracted: normalizeFichaLead(parsed),
+        };
+      } catch (error) {
+        console.error("extractFichaWithGroq.parse", error instanceof Error ? error.message : "unknown");
+        lastParseError = true;
+      }
     }
 
     if (lastError) {
       return { ok: false, message: groqErrorMessage(lastError.status, lastError.detail) };
+    }
+
+    if (lastParseError) {
+      return { ok: false, message: "A IA leu a ficha, mas respondeu fora do formato esperado. Tente novamente com a foto mais centralizada e nítida." };
     }
 
     return { ok: false, message: "Nenhum modelo Groq ficou disponivel para ler a ficha agora." };
@@ -292,6 +303,55 @@ function providerErrorDetail(detail: string) {
   } catch {
     return detail.replace(/\s+/g, " ").slice(0, 180);
   }
+}
+
+async function parseFichaJsonWithRepair({ apiKey, model, text }: { apiKey: string; model: string; text: string }) {
+  try {
+    return parseFichaJson(text);
+  } catch {
+    const repaired = await repairFichaJson({ apiKey, model, text });
+    return parseFichaJson(repaired);
+  }
+}
+
+async function repairFichaJson({ apiKey, model, text }: { apiKey: string; model: string; text: string }) {
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        {
+          role: "user",
+          content: [
+            "Converta o texto abaixo para JSON valido e estrito.",
+            "Nao invente dados. Use string vazia quando faltar valor.",
+            "Retorne somente o objeto JSON, sem markdown.",
+            "Chaves obrigatorias: full_name, cpf, phone, city, location_detail, email, birth_date, registration_date, license_category, motorcycle_model, desired_color, intended_down_payment, payment_method, other_payment_method, simulation_result, simulation_date, simulation_denial_reason, simulation_notes, installment_count, installment_value, notes, loose_notes, uncertainty_notes.",
+            "Texto:",
+            text.slice(0, 6000),
+          ].join("\n"),
+        },
+      ],
+      temperature: 0,
+      max_completion_tokens: 1024,
+    }),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Groq JSON repair failed: ${response.status} ${providerErrorDetail(detail)}`);
+  }
+
+  const payload = await response.json();
+  const repaired = payload?.choices?.[0]?.message?.content;
+  if (typeof repaired !== "string" || !repaired.trim()) {
+    throw new Error("Groq JSON repair returned empty response.");
+  }
+  return repaired;
 }
 
 function parseFichaJson(text: string) {
