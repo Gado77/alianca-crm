@@ -39,7 +39,7 @@ export async function extractFichaWithVision(file: File): Promise<FichaImportSta
 
 async function extractFichaWithGemini(file: File): Promise<FichaImportState> {
   const apiKey = process.env.GEMINI_API_KEY;
-  const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
   if (!apiKey) return { ok: false, message: "Configure GEMINI_API_KEY no ambiente do servidor para ler fichas por IA." };
   if (!file.type.startsWith("image/")) return { ok: false, message: "Envie uma imagem JPG, PNG ou WEBP." };
   if (file.size > 3 * 1024 * 1024) return { ok: false, message: "A imagem precisa ter até 3 MB." };
@@ -47,55 +47,58 @@ async function extractFichaWithGemini(file: File): Promise<FichaImportState> {
   try {
     const imageData = Buffer.from(await file.arrayBuffer()).toString("base64");
     const mimeType = normalizeImageMimeType(file.type);
-    let lastError: { status: number; detail: string; model: string } | null = null;
+    let lastError: { status: number; detail: string; model: string; apiVersion: string } | null = null;
 
     for (const currentModel of geminiVisionModels(model)) {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(currentModel)}:generateContent?key=${apiKey}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [
-                { text: fichaPrompt() },
-                { inlineData: { mimeType, data: imageData } },
-              ],
-            },
-          ],
-          generationConfig: {
-            temperature: 0,
-            maxOutputTokens: 1024,
+      for (const apiVersion of ["v1beta", "v1"]) {
+        const response = await fetch(`https://generativelanguage.googleapis.com/${apiVersion}/models/${encodeURIComponent(currentModel)}:generateContent?key=${apiKey}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
           },
-        }),
-      });
-
-      if (!response.ok) {
-        const detail = await response.text();
-        console.error("extractFichaWithGemini", {
-          status: response.status,
-          model: currentModel,
-          detail: detail.slice(0, 500),
+          body: JSON.stringify({
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  { text: fichaPrompt() },
+                  { inlineData: { mimeType, data: imageData } },
+                ],
+              },
+            ],
+            generationConfig: {
+              temperature: 0,
+              maxOutputTokens: 1024,
+            },
+          }),
         });
-        lastError = { status: response.status, detail, model: currentModel };
-        if (response.status === 404 || response.status === 429) continue;
-        return { ok: false, message: geminiErrorMessage(response.status, detail) };
+
+        if (!response.ok) {
+          const detail = await response.text();
+          console.error("extractFichaWithGemini", {
+            status: response.status,
+            model: currentModel,
+            apiVersion,
+            detail: detail.slice(0, 500),
+          });
+          lastError = { status: response.status, detail, model: currentModel, apiVersion };
+          if (response.status === 404 || response.status === 429) continue;
+          return { ok: false, message: await currentGeminiErrorMessage(apiKey, response.status, detail) };
+        }
+
+        const payload = await response.json();
+        const text = geminiText(payload);
+        if (!text) return { ok: false, message: "O Gemini não retornou dados da ficha. Tente outra foto." };
+
+        return {
+          ok: true,
+          message: `Ficha lida pela IA Gemini (${currentModel}). Confira tudo antes de salvar.`,
+          extracted: normalizeFichaLead(parseFichaJson(text)),
+        };
       }
-
-      const payload = await response.json();
-      const text = geminiText(payload);
-      if (!text) return { ok: false, message: "O Gemini não retornou dados da ficha. Tente outra foto." };
-
-      return {
-        ok: true,
-        message: `Ficha lida pela IA Gemini (${currentModel}). Confira tudo antes de salvar.`,
-        extracted: normalizeFichaLead(parseFichaJson(text)),
-      };
     }
 
-    if (lastError) return { ok: false, message: geminiErrorMessage(lastError.status, lastError.detail) };
+    if (lastError) return { ok: false, message: await currentGeminiErrorMessage(apiKey, lastError.status, lastError.detail) };
     return { ok: false, message: "Nenhum modelo Gemini ficou disponível para ler a ficha agora." };
   } catch (error) {
     console.error("extractFichaWithGemini", error instanceof Error ? error.message : "unknown");
@@ -105,11 +108,16 @@ async function extractFichaWithGemini(file: File): Promise<FichaImportState> {
 
 function geminiVisionModels(configuredModel: string) {
   return Array.from(new Set([
-    configuredModel,
-    "gemini-2.0-flash-lite",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
+    cleanGeminiModel(configuredModel),
+    "gemini-3.5-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
   ].filter(Boolean)));
+}
+
+function cleanGeminiModel(model: string) {
+  return model.replace(/^models\//, "").trim();
 }
 
 function normalizeFichaLead(raw: Record<string, unknown>): FichaExtractedLead {
@@ -276,15 +284,39 @@ function geminiText(payload: unknown) {
   return parts.map((part) => typeof part.text === "string" ? part.text : "").join("\n").trim();
 }
 
-function geminiErrorMessage(status: number, detail: string) {
+async function currentGeminiErrorMessage(apiKey: string, status: number, detail: string) {
   const parsedDetail = providerErrorDetail(detail);
   if (status === 400) return `O Gemini recusou a imagem ou a chamada. ${parsedDetail ? `Detalhe: ${parsedDetail}` : "Confira GEMINI_MODEL na Vercel."}`;
-  if (status === 401 || status === 403) return "A chave Gemini não tem permissão para essa chamada. Confira GEMINI_API_KEY e a Generative Language API.";
-  if (status === 404) return "Modelo Gemini não encontrado. Use gemini-2.0-flash ou gemini-2.5-flash em GEMINI_MODEL.";
+  if (status === 401 || status === 403) return "A chave Gemini nao tem permissao para essa chamada. Confira GEMINI_API_KEY e a Generative Language API.";
+  if (status === 404) {
+    const availableModels = await listGeminiModels(apiKey);
+    const modelList = availableModels.length ? ` Modelos visiveis nessa chave: ${availableModels.slice(0, 12).join(", ")}.` : "";
+    return `Modelo Gemini nao encontrado. Use gemini-3.5-flash, gemini-3.1-flash-lite ou gemini-2.5-flash em GEMINI_MODEL.${modelList}`;
+  }
   if (status === 413) return "A foto ficou grande demais para o Gemini. Tente uma imagem mais leve.";
   if (status === 429) return `O Gemini bloqueou por cota/limite nessa chave ou projeto. ${parsedDetail ? `Detalhe: ${parsedDetail}` : "Confira se a Generative Language API tem quota ativa, se a chave e do projeto certo e se o billing/free tier esta liberado."}`;
-  if (status >= 500) return "O Gemini ficou indisponível no momento. Tente novamente em instantes.";
-  return "Não foi possível ler a ficha com Gemini agora. Tente novamente.";
+  if (status >= 500) return "O Gemini ficou indisponivel no momento. Tente novamente em instantes.";
+  return "Nao foi possivel ler a ficha com Gemini agora. Tente novamente.";
+}
+
+async function listGeminiModels(apiKey: string) {
+  try {
+    for (const apiVersion of ["v1beta", "v1"]) {
+      const response = await fetch(`https://generativelanguage.googleapis.com/${apiVersion}/models?key=${apiKey}`);
+      if (!response.ok) continue;
+      const payload = await response.json();
+      const models: Array<{ name?: unknown; supportedGenerationMethods?: unknown }> = Array.isArray(payload?.models) ? payload.models : [];
+      const names = models
+        .filter((item) => Array.isArray(item.supportedGenerationMethods) && item.supportedGenerationMethods.includes("generateContent"))
+        .map((item) => typeof item.name === "string" ? cleanGeminiModel(item.name) : "")
+        .filter((name): name is string => Boolean(name))
+        .sort();
+      if (names.length) return names;
+    }
+  } catch (error) {
+    console.error("listGeminiModels", error instanceof Error ? error.message : "unknown");
+  }
+  return [];
 }
 
 function providerErrorDetail(detail: string) {
