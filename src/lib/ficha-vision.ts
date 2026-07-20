@@ -30,128 +30,19 @@ export type FichaImportState = {
 };
 
 export async function extractFichaWithVision(file: File): Promise<FichaImportState> {
-  const provider = (process.env.VISION_PROVIDER || "auto").toLowerCase();
-  if (provider === "gemini") return extractFichaWithGemini(file);
-  if (provider === "groq") {
-    const groqResult = await extractFichaWithGroq(file);
-    if (!groqResult.ok && process.env.GEMINI_API_KEY && groqResult.message.includes("Modelo de visao da Groq")) {
-      const geminiResult = await extractFichaWithGemini(file);
-      if (geminiResult.ok) return geminiResult;
-      return { ok: false, message: `${groqResult.message} Fallback Gemini tambem falhou: ${geminiResult.message}` };
-    }
-    return groqResult;
+  const provider = (process.env.VISION_PROVIDER || "gemini").toLowerCase();
+  if (provider !== "gemini") {
+    return { ok: false, message: "Provider de visão não configurado. Use VISION_PROVIDER=gemini." };
   }
-  if (provider === "auto") {
-    const groqResult = await extractFichaWithGroq(file);
-    if (groqResult.ok || !process.env.GEMINI_API_KEY) return groqResult;
-    const geminiResult = await extractFichaWithGemini(file);
-    return geminiResult.ok ? geminiResult : { ok: false, message: `${groqResult.message} Fallback Gemini tambem falhou: ${geminiResult.message}` };
-  }
-  return { ok: false, message: "Provider de visao nao configurado. Use VISION_PROVIDER=auto, groq ou gemini." };
-}
-
-async function extractFichaWithGroq(file: File): Promise<FichaImportState> {
-  const apiKey = process.env.GROQ_API_KEY;
-  const model = process.env.GROQ_MODEL || "qwen/qwen3.6-27b";
-  if (!apiKey) return { ok: false, message: "Configure GROQ_API_KEY no ambiente do servidor para ler fichas por IA." };
-  if (!file.type.startsWith("image/")) return { ok: false, message: "Envie uma imagem JPG, PNG ou WEBP." };
-  if (file.size > 3 * 1024 * 1024) return { ok: false, message: "A imagem precisa ter ate 3 MB." };
-
-  try {
-    const imageData = Buffer.from(await file.arrayBuffer()).toString("base64");
-    const mimeType = normalizeImageMimeType(file.type);
-    const models = groqVisionModels(model);
-    let lastError: { status: number; detail: string; model: string } | null = null;
-    let lastParseError = false;
-
-    for (const currentModel of models) {
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: currentModel,
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: fichaPrompt() },
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: `data:${mimeType};base64,${imageData}`,
-                  },
-                },
-              ],
-            },
-          ],
-          temperature: 0,
-          max_completion_tokens: 1024,
-        }),
-      });
-
-      if (!response.ok) {
-        const detail = await response.text();
-        console.error("extractFichaWithGroq", {
-          status: response.status,
-          model: currentModel,
-          detail: detail.slice(0, 500),
-        });
-        lastError = { status: response.status, detail, model: currentModel };
-        if (response.status === 404) continue;
-        return { ok: false, message: await groqErrorMessage(apiKey, response.status, detail) };
-      }
-
-      const payload = await response.json();
-      const text = payload?.choices?.[0]?.message?.content;
-      if (typeof text !== "string" || !text.trim()) {
-        return { ok: false, message: "A Groq nao retornou dados da ficha. Tente outra foto." };
-      }
-
-      try {
-        const parsed = await parseFichaJsonWithRepair({ apiKey, model: currentModel, text });
-        return {
-          ok: true,
-          message: `Ficha lida pela IA Groq (${currentModel}). Confira tudo antes de salvar.`,
-          extracted: normalizeFichaLead(parsed),
-        };
-      } catch (error) {
-        console.error("extractFichaWithGroq.parse", error instanceof Error ? error.message : "unknown");
-        lastParseError = true;
-      }
-    }
-
-    if (lastError) {
-      return { ok: false, message: await groqErrorMessage(apiKey, lastError.status, lastError.detail) };
-    }
-
-    if (lastParseError) {
-      return { ok: false, message: "A IA leu a ficha, mas respondeu fora do formato esperado. Tente novamente com a foto mais centralizada e nítida." };
-    }
-
-    return { ok: false, message: "Nenhum modelo Groq ficou disponivel para ler a ficha agora." };
-  } catch (error) {
-    console.error("extractFichaWithGroq", error instanceof Error ? error.message : "unknown");
-    return { ok: false, message: "Nao foi possivel interpretar a ficha. Confira a foto e tente novamente." };
-  }
-}
-
-function groqVisionModels(configuredModel: string) {
-  return Array.from(new Set([
-    configuredModel,
-    "qwen/qwen3.6-27b",
-    "meta-llama/llama-4-scout-17b-16e-instruct",
-  ].filter(Boolean)));
+  return extractFichaWithGemini(file);
 }
 
 async function extractFichaWithGemini(file: File): Promise<FichaImportState> {
   const apiKey = process.env.GEMINI_API_KEY;
   const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
-  if (!apiKey) return { ok: false, message: "Configure GEMINI_API_KEY no ambiente do servidor para usar Gemini." };
+  if (!apiKey) return { ok: false, message: "Configure GEMINI_API_KEY no ambiente do servidor para ler fichas por IA." };
   if (!file.type.startsWith("image/")) return { ok: false, message: "Envie uma imagem JPG, PNG ou WEBP." };
-  if (file.size > 3 * 1024 * 1024) return { ok: false, message: "A imagem precisa ter ate 3 MB." };
+  if (file.size > 3 * 1024 * 1024) return { ok: false, message: "A imagem precisa ter até 3 MB." };
 
   try {
     const imageData = Buffer.from(await file.arrayBuffer()).toString("base64");
@@ -190,7 +81,7 @@ async function extractFichaWithGemini(file: File): Promise<FichaImportState> {
 
     const payload = await response.json();
     const text = geminiText(payload);
-    if (!text) return { ok: false, message: "O Gemini nao retornou dados da ficha. Tente outra foto." };
+    if (!text) return { ok: false, message: "O Gemini não retornou dados da ficha. Tente outra foto." };
 
     return {
       ok: true,
@@ -199,7 +90,7 @@ async function extractFichaWithGemini(file: File): Promise<FichaImportState> {
     };
   } catch (error) {
     console.error("extractFichaWithGemini", error instanceof Error ? error.message : "unknown");
-    return { ok: false, message: "Nao foi possivel interpretar a ficha com Gemini. Confira a foto e tente novamente." };
+    return { ok: false, message: "Não foi possível interpretar a ficha com Gemini. Confira a foto e tente novamente." };
   }
 }
 
@@ -292,11 +183,11 @@ function normalizeFichaSimulationResult(value: string, raw: Record<string, unkno
 
 function normalizeFichaDenialReason(reason: string, notes: string) {
   const value = `${reason} ${notes}`.toLowerCase();
-  if (value.includes("ineleg")) return "Cliente inelegivel";
+  if (value.includes("ineleg")) return "Cliente inelegível";
   if (value.includes("score")) return "Score baixo";
   if (value.includes("restri") || value.includes("dívida") || value.includes("divida")) return "Nome restrito";
   if (value.includes("entrada")) return "Sem entrada";
-  if (value.includes("sal")) return "Aguardando salario";
+  if (value.includes("sal")) return "Aguardando salário";
   return reason;
 }
 
@@ -355,97 +246,6 @@ function fichaPrompt() {
   ].join("\n");
 }
 
-async function groqErrorMessage(apiKey: string, status: number, detail: string) {
-  const parsedDetail = providerErrorDetail(detail);
-  if (status === 400) return `A Groq recusou a imagem ou a chamada. ${parsedDetail ? `Detalhe: ${parsedDetail}` : "Tente outra foto ou confira GROQ_MODEL na Vercel."}`;
-  if (status === 401 || status === 403) return "A chave Groq nao tem permissao para essa chamada. Confira GROQ_API_KEY na Vercel.";
-  if (status === 404) {
-    const availableModels = await listGroqModels(apiKey);
-    const modelList = availableModels.length ? ` Modelos visiveis nessa chave: ${availableModels.slice(0, 12).join(", ")}.` : "";
-    return `Modelo de visao da Groq nao encontrado nessa chave. Ative/libere qwen/qwen3.6-27b no projeto da Groq ou crie uma nova chave no projeto correto.${modelList}`;
-  }
-  if (status === 413) return "A foto ficou grande demais para a Groq. Tente uma imagem mais leve.";
-  if (status === 429) return "A Groq bloqueou por limite de uso agora. Aguarde um pouco e tente novamente.";
-  if (status >= 500) return "A Groq ficou indisponivel no momento. Tente novamente em instantes.";
-  return "Nao foi possivel ler a ficha agora. Tente novamente.";
-}
-
-async function listGroqModels(apiKey: string) {
-  try {
-    const response = await fetch("https://api.groq.com/openai/v1/models", {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-    });
-    if (!response.ok) return [];
-    const payload = await response.json();
-    const models: Array<{ id?: unknown }> = Array.isArray(payload?.data) ? payload.data : [];
-    return models.map((item) => item?.id).filter((id): id is string => typeof id === "string").sort();
-  } catch (error) {
-    console.error("listGroqModels", error instanceof Error ? error.message : "unknown");
-    return [];
-  }
-}
-
-function providerErrorDetail(detail: string) {
-  try {
-    const parsed = JSON.parse(detail) as { error?: { message?: string } };
-    return parsed.error?.message?.replace(/\s+/g, " ").slice(0, 180) || "";
-  } catch {
-    return detail.replace(/\s+/g, " ").slice(0, 180);
-  }
-}
-
-async function parseFichaJsonWithRepair({ apiKey, model, text }: { apiKey: string; model: string; text: string }) {
-  try {
-    return parseFichaJson(text);
-  } catch {
-    const repaired = await repairFichaJson({ apiKey, model, text });
-    return parseFichaJson(repaired);
-  }
-}
-
-async function repairFichaJson({ apiKey, model, text }: { apiKey: string; model: string; text: string }) {
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        {
-          role: "user",
-          content: [
-            "Converta o texto abaixo para JSON valido e estrito.",
-            "Nao invente dados. Use string vazia quando faltar valor.",
-            "Retorne somente o objeto JSON, sem markdown.",
-            "Chaves obrigatorias: full_name, cpf, phone, city, location_detail, email, birth_date, registration_date, license_category, motorcycle_model, desired_color, intended_down_payment, payment_method, other_payment_method, simulation_result, simulation_date, simulation_denial_reason, simulation_notes, installment_count, installment_value, notes, loose_notes, uncertainty_notes.",
-            "Texto:",
-            text.slice(0, 6000),
-          ].join("\n"),
-        },
-      ],
-      temperature: 0,
-      max_completion_tokens: 1024,
-    }),
-  });
-
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`Groq JSON repair failed: ${response.status} ${providerErrorDetail(detail)}`);
-  }
-
-  const payload = await response.json();
-  const repaired = payload?.choices?.[0]?.message?.content;
-  if (typeof repaired !== "string" || !repaired.trim()) {
-    throw new Error("Groq JSON repair returned empty response.");
-  }
-  return repaired;
-}
-
 function geminiText(payload: unknown) {
   const data = payload as {
     candidates?: Array<{
@@ -461,19 +261,28 @@ function geminiText(payload: unknown) {
 function geminiErrorMessage(status: number, detail: string) {
   const parsedDetail = providerErrorDetail(detail);
   if (status === 400) return `O Gemini recusou a imagem ou a chamada. ${parsedDetail ? `Detalhe: ${parsedDetail}` : "Confira GEMINI_MODEL na Vercel."}`;
-  if (status === 401 || status === 403) return "A chave Gemini nao tem permissao para essa chamada. Confira GEMINI_API_KEY e a Generative Language API.";
-  if (status === 404) return "Modelo Gemini nao encontrado. Use gemini-2.0-flash ou gemini-2.5-flash em GEMINI_MODEL.";
+  if (status === 401 || status === 403) return "A chave Gemini não tem permissão para essa chamada. Confira GEMINI_API_KEY e a Generative Language API.";
+  if (status === 404) return "Modelo Gemini não encontrado. Use gemini-2.0-flash ou gemini-2.5-flash em GEMINI_MODEL.";
   if (status === 413) return "A foto ficou grande demais para o Gemini. Tente uma imagem mais leve.";
   if (status === 429) return "O Gemini bloqueou por limite de uso agora. Aguarde um pouco e tente novamente.";
-  if (status >= 500) return "O Gemini ficou indisponivel no momento. Tente novamente em instantes.";
-  return "Nao foi possivel ler a ficha com Gemini agora. Tente novamente.";
+  if (status >= 500) return "O Gemini ficou indisponível no momento. Tente novamente em instantes.";
+  return "Não foi possível ler a ficha com Gemini agora. Tente novamente.";
+}
+
+function providerErrorDetail(detail: string) {
+  try {
+    const parsed = JSON.parse(detail) as { error?: { message?: string } };
+    return parsed.error?.message?.replace(/\s+/g, " ").slice(0, 180) || "";
+  } catch {
+    return detail.replace(/\s+/g, " ").slice(0, 180);
+  }
 }
 
 function parseFichaJson(text: string) {
   try {
     return JSON.parse(extractJsonText(text)) as Record<string, unknown>;
   } catch {
-    throw new Error("Groq returned invalid ficha JSON.");
+    throw new Error("Gemini returned invalid ficha JSON.");
   }
 }
 

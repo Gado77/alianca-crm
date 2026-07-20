@@ -64,9 +64,9 @@ Local `.env.local`:
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
-VISION_PROVIDER=groq
-GROQ_API_KEY=
-GROQ_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+VISION_PROVIDER=gemini
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-2.0-flash
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 NEXT_PUBLIC_APP_ENV=development
 NEXT_PUBLIC_ENABLE_HOMOLOGATION=false
@@ -78,9 +78,9 @@ Vercel `Production`:
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
-VISION_PROVIDER=groq
-GROQ_API_KEY=
-GROQ_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+VISION_PROVIDER=gemini
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-2.0-flash
 NEXT_PUBLIC_APP_URL=https://<seu-dominio-ou-vercel-url>
 NEXT_PUBLIC_APP_ENV=production
 NEXT_PUBLIC_ENABLE_HOMOLOGATION=true
@@ -95,9 +95,9 @@ Depois da homologacao externa, trocar `NEXT_PUBLIC_ENABLE_HOMOLOGATION=false` e 
 - Nunca importar service role em componente client.
 - Nunca retornar service role em Server Action, Route Handler ou log.
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` pode ficar no cliente, sempre protegida por RLS.
-- `GROQ_API_KEY` tambem e exclusivamente server-side e nao deve ter prefixo `NEXT_PUBLIC_`.
-- A leitura de ficha envia a imagem para a Groq somente quando o usuario escolhe uma foto e clica em ler ficha.
-- O modelo de visao recomendado e `meta-llama/llama-4-scout-17b-16e-instruct`.
+- `GEMINI_API_KEY` tambem e exclusivamente server-side e nao deve ter prefixo `NEXT_PUBLIC_`.
+- A leitura de ficha envia a imagem para o Gemini somente quando o usuario escolhe uma foto e clica em ler ficha.
+- O modelo de visao recomendado e `gemini-2.0-flash`.
 
 ## 9. URLs de Auth no Supabase
 
