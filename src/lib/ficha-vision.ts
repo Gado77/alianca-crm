@@ -88,7 +88,7 @@ async function extractFichaWithGroq(file: File): Promise<FichaImportState> {
         });
         lastError = { status: response.status, detail, model: currentModel };
         if (response.status === 404) continue;
-        return { ok: false, message: groqErrorMessage(response.status, detail) };
+        return { ok: false, message: await groqErrorMessage(apiKey, response.status, detail) };
       }
 
       const payload = await response.json();
@@ -111,7 +111,7 @@ async function extractFichaWithGroq(file: File): Promise<FichaImportState> {
     }
 
     if (lastError) {
-      return { ok: false, message: groqErrorMessage(lastError.status, lastError.detail) };
+      return { ok: false, message: await groqErrorMessage(apiKey, lastError.status, lastError.detail) };
     }
 
     if (lastParseError) {
@@ -285,15 +285,37 @@ function fichaPrompt() {
   ].join("\n");
 }
 
-function groqErrorMessage(status: number, detail: string) {
+async function groqErrorMessage(apiKey: string, status: number, detail: string) {
   const parsedDetail = providerErrorDetail(detail);
   if (status === 400) return `A Groq recusou a imagem ou a chamada. ${parsedDetail ? `Detalhe: ${parsedDetail}` : "Tente outra foto ou confira GROQ_MODEL na Vercel."}`;
   if (status === 401 || status === 403) return "A chave Groq nao tem permissao para essa chamada. Confira GROQ_API_KEY na Vercel.";
-  if (status === 404) return "Modelo Groq nao encontrado. Use qwen/qwen3.6-27b em GROQ_MODEL.";
+  if (status === 404) {
+    const availableModels = await listGroqModels(apiKey);
+    const modelList = availableModels.length ? ` Modelos visiveis nessa chave: ${availableModels.slice(0, 12).join(", ")}.` : "";
+    return `Modelo de visao da Groq nao encontrado nessa chave. Ative/libere qwen/qwen3.6-27b no projeto da Groq ou crie uma nova chave no projeto correto.${modelList}`;
+  }
   if (status === 413) return "A foto ficou grande demais para a Groq. Tente uma imagem mais leve.";
   if (status === 429) return "A Groq bloqueou por limite de uso agora. Aguarde um pouco e tente novamente.";
   if (status >= 500) return "A Groq ficou indisponivel no momento. Tente novamente em instantes.";
   return "Nao foi possivel ler a ficha agora. Tente novamente.";
+}
+
+async function listGroqModels(apiKey: string) {
+  try {
+    const response = await fetch("https://api.groq.com/openai/v1/models", {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+    });
+    if (!response.ok) return [];
+    const payload = await response.json();
+    const models: Array<{ id?: unknown }> = Array.isArray(payload?.data) ? payload.data : [];
+    return models.map((item) => item?.id).filter((id): id is string => typeof id === "string").sort();
+  } catch (error) {
+    console.error("listGroqModels", error instanceof Error ? error.message : "unknown");
+    return [];
+  }
 }
 
 function providerErrorDetail(detail: string) {
