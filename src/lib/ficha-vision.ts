@@ -75,7 +75,6 @@ async function extractFichaWithGroq(file: File): Promise<FichaImportState> {
           ],
           temperature: 0,
           max_completion_tokens: 1024,
-          response_format: { type: "json_object" },
         }),
       });
 
@@ -100,7 +99,7 @@ async function extractFichaWithGroq(file: File): Promise<FichaImportState> {
       return {
         ok: true,
         message: `Ficha lida pela IA Groq (${currentModel}). Confira tudo antes de salvar.`,
-        extracted: normalizeFichaLead(JSON.parse(extractJsonText(text))),
+        extracted: normalizeFichaLead(parseFichaJson(text)),
       };
     }
 
@@ -292,6 +291,14 @@ function providerErrorDetail(detail: string) {
     return parsed.error?.message?.replace(/\s+/g, " ").slice(0, 180) || "";
   } catch {
     return detail.replace(/\s+/g, " ").slice(0, 180);
+  }
+}
+
+function parseFichaJson(text: string) {
+  try {
+    return JSON.parse(extractJsonText(text)) as Record<string, unknown>;
+  } catch {
+    throw new Error("Groq returned invalid ficha JSON.");
   }
 }
 
