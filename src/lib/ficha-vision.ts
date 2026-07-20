@@ -30,11 +30,24 @@ export type FichaImportState = {
 };
 
 export async function extractFichaWithVision(file: File): Promise<FichaImportState> {
-  const provider = (process.env.VISION_PROVIDER || "groq").toLowerCase();
-  if (provider !== "groq") {
-    return { ok: false, message: "Provider de visao nao configurado. Use VISION_PROVIDER=groq." };
+  const provider = (process.env.VISION_PROVIDER || "auto").toLowerCase();
+  if (provider === "gemini") return extractFichaWithGemini(file);
+  if (provider === "groq") {
+    const groqResult = await extractFichaWithGroq(file);
+    if (!groqResult.ok && process.env.GEMINI_API_KEY && groqResult.message.includes("Modelo de visao da Groq")) {
+      const geminiResult = await extractFichaWithGemini(file);
+      if (geminiResult.ok) return geminiResult;
+      return { ok: false, message: `${groqResult.message} Fallback Gemini tambem falhou: ${geminiResult.message}` };
+    }
+    return groqResult;
   }
-  return extractFichaWithGroq(file);
+  if (provider === "auto") {
+    const groqResult = await extractFichaWithGroq(file);
+    if (groqResult.ok || !process.env.GEMINI_API_KEY) return groqResult;
+    const geminiResult = await extractFichaWithGemini(file);
+    return geminiResult.ok ? geminiResult : { ok: false, message: `${groqResult.message} Fallback Gemini tambem falhou: ${geminiResult.message}` };
+  }
+  return { ok: false, message: "Provider de visao nao configurado. Use VISION_PROVIDER=auto, groq ou gemini." };
 }
 
 async function extractFichaWithGroq(file: File): Promise<FichaImportState> {
@@ -131,6 +144,63 @@ function groqVisionModels(configuredModel: string) {
     "qwen/qwen3.6-27b",
     "meta-llama/llama-4-scout-17b-16e-instruct",
   ].filter(Boolean)));
+}
+
+async function extractFichaWithGemini(file: File): Promise<FichaImportState> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+  if (!apiKey) return { ok: false, message: "Configure GEMINI_API_KEY no ambiente do servidor para usar Gemini." };
+  if (!file.type.startsWith("image/")) return { ok: false, message: "Envie uma imagem JPG, PNG ou WEBP." };
+  if (file.size > 3 * 1024 * 1024) return { ok: false, message: "A imagem precisa ter ate 3 MB." };
+
+  try {
+    const imageData = Buffer.from(await file.arrayBuffer()).toString("base64");
+    const mimeType = normalizeImageMimeType(file.type);
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: fichaPrompt() },
+              { inlineData: { mimeType, data: imageData } },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0,
+          maxOutputTokens: 1024,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text();
+      console.error("extractFichaWithGemini", {
+        status: response.status,
+        model,
+        detail: detail.slice(0, 500),
+      });
+      return { ok: false, message: geminiErrorMessage(response.status, detail) };
+    }
+
+    const payload = await response.json();
+    const text = geminiText(payload);
+    if (!text) return { ok: false, message: "O Gemini nao retornou dados da ficha. Tente outra foto." };
+
+    return {
+      ok: true,
+      message: `Ficha lida pela IA Gemini (${model}). Confira tudo antes de salvar.`,
+      extracted: normalizeFichaLead(parseFichaJson(text)),
+    };
+  } catch (error) {
+    console.error("extractFichaWithGemini", error instanceof Error ? error.message : "unknown");
+    return { ok: false, message: "Nao foi possivel interpretar a ficha com Gemini. Confira a foto e tente novamente." };
+  }
 }
 
 function normalizeFichaLead(raw: Record<string, unknown>): FichaExtractedLead {
@@ -374,6 +444,29 @@ async function repairFichaJson({ apiKey, model, text }: { apiKey: string; model:
     throw new Error("Groq JSON repair returned empty response.");
   }
   return repaired;
+}
+
+function geminiText(payload: unknown) {
+  const data = payload as {
+    candidates?: Array<{
+      content?: {
+        parts?: Array<{ text?: unknown }>;
+      };
+    }>;
+  };
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  return parts.map((part) => typeof part.text === "string" ? part.text : "").join("\n").trim();
+}
+
+function geminiErrorMessage(status: number, detail: string) {
+  const parsedDetail = providerErrorDetail(detail);
+  if (status === 400) return `O Gemini recusou a imagem ou a chamada. ${parsedDetail ? `Detalhe: ${parsedDetail}` : "Confira GEMINI_MODEL na Vercel."}`;
+  if (status === 401 || status === 403) return "A chave Gemini nao tem permissao para essa chamada. Confira GEMINI_API_KEY e a Generative Language API.";
+  if (status === 404) return "Modelo Gemini nao encontrado. Use gemini-2.0-flash ou gemini-2.5-flash em GEMINI_MODEL.";
+  if (status === 413) return "A foto ficou grande demais para o Gemini. Tente uma imagem mais leve.";
+  if (status === 429) return "O Gemini bloqueou por limite de uso agora. Aguarde um pouco e tente novamente.";
+  if (status >= 500) return "O Gemini ficou indisponivel no momento. Tente novamente em instantes.";
+  return "Nao foi possivel ler a ficha com Gemini agora. Tente novamente.";
 }
 
 function parseFichaJson(text: string) {
